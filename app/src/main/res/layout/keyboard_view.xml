@@ -13,33 +13,50 @@
         android:orientation="horizontal"
         android:paddingBottom="4dp">
 
-        <Button
+        <TextView
             android:id="@+id/btnLang"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
+            android:background="@drawable/key_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
             android:minWidth="48dp"
+            android:paddingHorizontal="8dp"
             android:text="@string/mode_sinhala"
+            android:textColor="#212121"
             android:textSize="12sp" />
 
-        <Button
+        <TextView
             android:id="@+id/btnFix"
             android:layout_width="wrap_content"
             android:layout_height="36dp"
             android:layout_marginStart="4dp"
+            android:background="@drawable/key_bg"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:minWidth="40dp"
+            android:paddingHorizontal="8dp"
             android:text="@string/key_fix"
+            android:textColor="#212121"
             android:textSize="12sp"
             android:visibility="gone" />
 
-        <TextView
-            android:id="@+id/previewBar"
+        <HorizontalScrollView
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
             android:layout_weight="1"
-            android:ellipsize="end"
-            android:maxLines="1"
-            android:textColor="#1B5E20"
-            android:textSize="18sp" />
+            android:scrollbars="none">
+
+            <LinearLayout
+                android:id="@+id/suggestionRow"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center_vertical"
+                android:orientation="horizontal" />
+        </HorizontalScrollView>
 
         <ProgressBar
             android:id="@+id/progress"
@@ -54,48 +71,48 @@
         android:orientation="vertical">
 
         <LinearLayout style="@style/KeyboardRow">
-            <Button android:id="@+id/keyQ" style="@style/KeyButton" android:text="q" />
-            <Button android:id="@+id/keyW" style="@style/KeyButton" android:text="w" />
-            <Button android:id="@+id/keyE" style="@style/KeyButton" android:text="e" />
-            <Button android:id="@+id/keyR" style="@style/KeyButton" android:text="r" />
-            <Button android:id="@+id/keyT" style="@style/KeyButton" android:text="t" />
-            <Button android:id="@+id/keyY" style="@style/KeyButton" android:text="y" />
-            <Button android:id="@+id/keyU" style="@style/KeyButton" android:text="u" />
-            <Button android:id="@+id/keyI" style="@style/KeyButton" android:text="i" />
-            <Button android:id="@+id/keyO" style="@style/KeyButton" android:text="o" />
-            <Button android:id="@+id/keyP" style="@style/KeyButton" android:text="p" />
+            <TextView android:id="@+id/keyQ" style="@style/KeyText" android:text="q" />
+            <TextView android:id="@+id/keyW" style="@style/KeyText" android:text="w" />
+            <TextView android:id="@+id/keyE" style="@style/KeyText" android:text="e" />
+            <TextView android:id="@+id/keyR" style="@style/KeyText" android:text="r" />
+            <TextView android:id="@+id/keyT" style="@style/KeyText" android:text="t" />
+            <TextView android:id="@+id/keyY" style="@style/KeyText" android:text="y" />
+            <TextView android:id="@+id/keyU" style="@style/KeyText" android:text="u" />
+            <TextView android:id="@+id/keyI" style="@style/KeyText" android:text="i" />
+            <TextView android:id="@+id/keyO" style="@style/KeyText" android:text="o" />
+            <TextView android:id="@+id/keyP" style="@style/KeyText" android:text="p" />
         </LinearLayout>
 
         <LinearLayout style="@style/KeyboardRow">
-            <Button android:id="@+id/keyA" style="@style/KeyButton" android:text="a" />
-            <Button android:id="@+id/keyS" style="@style/KeyButton" android:text="s" />
-            <Button android:id="@+id/keyD" style="@style/KeyButton" android:text="d" />
-            <Button android:id="@+id/keyF" style="@style/KeyButton" android:text="f" />
-            <Button android:id="@+id/keyG" style="@style/KeyButton" android:text="g" />
-            <Button android:id="@+id/keyH" style="@style/KeyButton" android:text="h" />
-            <Button android:id="@+id/keyJ" style="@style/KeyButton" android:text="j" />
-            <Button android:id="@+id/keyK" style="@style/KeyButton" android:text="k" />
-            <Button android:id="@+id/keyL" style="@style/KeyButton" android:text="l" />
+            <TextView android:id="@+id/keyA" style="@style/KeyText" android:text="a" />
+            <TextView android:id="@+id/keyS" style="@style/KeyText" android:text="s" />
+            <TextView android:id="@+id/keyD" style="@style/KeyText" android:text="d" />
+            <TextView android:id="@+id/keyF" style="@style/KeyText" android:text="f" />
+            <TextView android:id="@+id/keyG" style="@style/KeyText" android:text="g" />
+            <TextView android:id="@+id/keyH" style="@style/KeyText" android:text="h" />
+            <TextView android:id="@+id/keyJ" style="@style/KeyText" android:text="j" />
+            <TextView android:id="@+id/keyK" style="@style/KeyText" android:text="k" />
+            <TextView android:id="@+id/keyL" style="@style/KeyText" android:text="l" />
         </LinearLayout>
 
         <LinearLayout style="@style/KeyboardRow">
-            <Button android:id="@+id/keyShift" style="@style/KeyButtonWide" android:text="⇧" />
-            <Button android:id="@+id/keyZ" style="@style/KeyButton" android:text="z" />
-            <Button android:id="@+id/keyX" style="@style/KeyButton" android:text="x" />
-            <Button android:id="@+id/keyC" style="@style/KeyButton" android:text="c" />
-            <Button android:id="@+id/keyV" style="@style/KeyButton" android:text="v" />
-            <Button android:id="@+id/keyB" style="@style/KeyButton" android:text="b" />
-            <Button android:id="@+id/keyN" style="@style/KeyButton" android:text="n" />
-            <Button android:id="@+id/keyM" style="@style/KeyButton" android:text="m" />
-            <Button android:id="@+id/keyBackspace" style="@style/KeyButtonWide" android:text="⌫" />
+            <TextView android:id="@+id/keyShift" style="@style/KeyTextWide" android:text="⇧" />
+            <TextView android:id="@+id/keyZ" style="@style/KeyText" android:text="z" />
+            <TextView android:id="@+id/keyX" style="@style/KeyText" android:text="x" />
+            <TextView android:id="@+id/keyC" style="@style/KeyText" android:text="c" />
+            <TextView android:id="@+id/keyV" style="@style/KeyText" android:text="v" />
+            <TextView android:id="@+id/keyB" style="@style/KeyText" android:text="b" />
+            <TextView android:id="@+id/keyN" style="@style/KeyText" android:text="n" />
+            <TextView android:id="@+id/keyM" style="@style/KeyText" android:text="m" />
+            <TextView android:id="@+id/keyBackspace" style="@style/KeyTextWide" android:text="⌫" />
         </LinearLayout>
 
         <LinearLayout style="@style/KeyboardRow">
-            <Button android:id="@+id/keyNumbers" style="@style/KeyButtonWide" android:text="123" />
-            <Button android:id="@+id/keyComma" style="@style/KeyButton" android:text="," />
-            <Button android:id="@+id/keySpace" style="@style/KeyButtonSpace" android:text="space" />
-            <Button android:id="@+id/keyPeriod" style="@style/KeyButton" android:text="." />
-            <Button android:id="@+id/keyEnter" style="@style/KeyButtonWide" android:text="↵" />
+            <TextView android:id="@+id/keyNumbers" style="@style/KeyTextWide" android:text="123" />
+            <TextView android:id="@+id/keyComma" style="@style/KeyText" android:text="," />
+            <TextView android:id="@+id/keySpace" style="@style/KeyTextSpace" android:text="space" />
+            <TextView android:id="@+id/keyPeriod" style="@style/KeyText" android:text="." />
+            <TextView android:id="@+id/keyEnter" style="@style/KeyTextWide" android:text="↵" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>

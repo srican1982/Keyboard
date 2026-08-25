@@ -32,16 +32,24 @@ object SinglishEngine {
         "i" to "\u0D89", "u" to "\u0D8B", "e" to "\u0D91", "o" to "\u0D94",
     )
 
-    private val dictionary = mapOf(
+    val dictionary: Map<String, String> = mapOf(
         "mama" to "\u0DB8\u0DB8",
         "amma" to "\u0D85\u0DB8\u0DCA\u0DB8",
         "thaththa" to "\u0DAD\u0DCF\u0DAD\u0DCA\u0DAD\u0DCF",
+        "nangi" to "\u0DBA\u0D82\u0DA2\u0DD2",
         "ayubowan" to "\u0D86\u0DBA\u0DD4\u0DB6\u0DDC\u0DC0\u0DB1\u0DCA",
         "kohomada" to "\u0D9A\u0DDC\u0DC4\u0DDC\u0DB8\u0DAF",
+        "kohomath" to "\u0D9A\u0DDC\u0DC4\u0DDC\u0DB8\u0DAF",
         "stuti" to "\u0DC3\u0DCA\u0DAD\u0DD2\u0DAD\u0DD2",
+        "istuti" to "\u0D87\u0DC3\u0DCA\u0DAD\u0DD2\u0DAD\u0DD2",
         "oyata" to "\u0D94\u0DBA\u0DCF\u0DA7",
+        "mata" to "\u0DB8\u0DA7",
         "hari" to "\u0DC4\u0DBA\u0DD2",
         "ow" to "\u0D94\u0DC0\u0DCA",
+        "na" to "\u0DAB",
+        "enna" to "\u0D9A\u0DB1\u0DBA\u0DB1",
+        "yanna" to "\u0DB8\u0DB1\u0DBA\u0DB1",
+        "samawenna" to "\u0DC3\u0DB8\u0DC0\u0DB1\u0DBA\u0DB1",
     )
 
     fun transliterate(input: String): String {
@@ -49,6 +57,22 @@ object SinglishEngine {
         if (word.isEmpty()) return ""
         dictionary[word]?.let { return it }
         return transliterateWord(word)
+    }
+
+    /** Returns Sinhala suggestions for the current Singlish prefix. */
+    fun suggestions(prefix: String, limit: Int = 5): List<String> {
+        val p = prefix.lowercase().trim()
+        if (p.length < 2) return emptyList()
+
+        val matches = dictionary.entries
+            .filter { it.key.startsWith(p) }
+            .sortedBy { it.key.length }
+            .map { it.value }
+            .distinct()
+
+        if (matches.isNotEmpty()) return matches.take(limit)
+
+        return listOf(transliterate(p))
     }
 
     private fun transliterateWord(input: String): String {

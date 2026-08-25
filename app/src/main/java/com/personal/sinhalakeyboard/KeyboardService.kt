@@ -1,11 +1,15 @@
 package com.personal.sinhalakeyboard
 
 import android.inputmethodservice.InputMethodService
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
+import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
-import android.widget.Button
+import android.view.inputmethod.InputConnection
+import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -23,11 +27,13 @@ class KeyboardService : InputMethodService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val grammarFixer = GrammarFixer()
+    private val repeatHandler = Handler(Looper.getMainLooper())
+    private var repeatRunnable: Runnable? = null
 
     private var keyboardView: View? = null
-    private var previewBar: TextView? = null
-    private var btnLang: Button? = null
-    private var btnFix: Button? = null
+    private var suggestionRow: LinearLayout? = null
+    private var btnLang: TextView? = null
+    private var btnFix: TextView? = null
     private var progress: ProgressBar? = null
 
     private var language = Language.SINHALA
@@ -38,7 +44,7 @@ class KeyboardService : InputMethodService() {
     override fun onCreateInputView(): View {
         val view = LayoutInflater.from(this).inflate(R.layout.keyboard_view, null)
         keyboardView = view
-        previewBar = view.findViewById(R.id.previewBar)
+        suggestionRow = view.findViewById(R.id.suggestionRow)
         btnLang = view.findViewById(R.id.btnLang)
         btnFix = view.findViewById(R.id.btnFix)
         progress = view.findViewById(R.id.progress)
@@ -70,13 +76,13 @@ class KeyboardService : InputMethodService() {
         setupKey(view, R.id.keyN, "n")
         setupKey(view, R.id.keyM, "m")
 
-        view.findViewById<Button>(R.id.keyShift).setOnClickListener { toggleShift() }
-        view.findViewById<Button>(R.id.keyBackspace).setOnClickListener { onBackspace() }
-        view.findViewById<Button>(R.id.keySpace).setOnClickListener { onSpace() }
-        view.findViewById<Button>(R.id.keyEnter).setOnClickListener { onEnter() }
-        view.findViewById<Button>(R.id.keyComma).setOnClickListener { commitDirect(",") }
-        view.findViewById<Button>(R.id.keyPeriod).setOnClickListener { commitDirect(".") }
-        view.findViewById<Button>(R.id.keyNumbers).setOnClickListener {
+        view.findViewById<TextView>(R.id.keyShift).setOnClickListener { toggleShift() }
+        setupRepeatKey(view.findViewById(R.id.keyBackspace)) { onBackspace() }
+        view.findViewById<TextView>(R.id.keySpace).setOnClickListener { onSpace() }
+        view.findViewById<TextView>(R.id.keyEnter).setOnClickListener { onEnter() }
+        view.findViewById<TextView>(R.id.keyComma).setOnClickListener { commitDirect(",") }
+        view.findViewById<TextView>(R.id.keyPeriod).setOnClickListener { commitDirect(".") }
+        view.findViewById<TextView>(R.id.keyNumbers).setOnClickListener {
             Toast.makeText(this, "Numbers row coming soon", Toast.LENGTH_SHORT).show()
         }
 
@@ -88,7 +94,42 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun setupKey(view: View, id: Int, letter: String) {
-        view.findViewById<Button>(id).setOnClickListener { onLetter(letter) }
+        view.findViewById<TextView>(id).setOnClickListener { onLetter(letter) }
+    }
+
+    private fun setupRepeatKey(view: View, action: () -> Unit) {
+        view.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    action()
+                    startRepeat(action)
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    stopRepeat()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun startRepeat(action: () -> Unit) {
+        stopRepeat()
+        var delay = 400L
+        repeatRunnable = object : Runnable {
+            override fun run() {
+                action()
+                delay = (delay * 0.85).toLong().coerceAtLeast(40L)
+                repeatHandler.postDelayed(this, delay)
+            }
+        }
+        repeatHandler.postDelayed(repeatRunnable!!, 400L)
+    }
+
+    private fun stopRepeat() {
+        repeatRunnable?.let { repeatHandler.removeCallbacks(it) }
+        repeatRunnable = null
     }
 
     private fun onLetter(letter: String) {
@@ -100,7 +141,8 @@ class KeyboardService : InputMethodService() {
         }
 
         sinhalaBuffer.append(ch.lowercase())
-        updatePreview()
+        updateComposingText()
+        updateSuggestions()
     }
 
     private fun onSpace() {
@@ -120,18 +162,20 @@ class KeyboardService : InputMethodService() {
     private fun onBackspace() {
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             sinhalaBuffer.deleteCharAt(sinhalaBuffer.length - 1)
-            updatePreview()
+            updateComposingText()
+            updateSuggestions()
             return
         }
         currentInputConnection?.deleteSurroundingText(1, 0)
     }
 
-    private fun commitSinhalaWord() {
-        val word = sinhalaBuffer.toString()
-        val sinhala = SinglishEngine.transliterate(word)
-        currentInputConnection?.commitText(sinhala, 1)
+    private fun commitSinhalaWord(sinhala: String? = null) {
+        val word = sinhala ?: SinglishEngine.transliterate(sinhalaBuffer.toString())
+        if (word.isEmpty()) return
+        currentInputConnection?.commitText(word, 1)
         sinhalaBuffer.clear()
-        updatePreview()
+        clearComposingText()
+        updateSuggestions()
     }
 
     private fun commitDirect(text: String) {
@@ -141,11 +185,47 @@ class KeyboardService : InputMethodService() {
         currentInputConnection?.commitText(text, 1)
     }
 
-    private fun updatePreview() {
-        previewBar?.text = if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
-            SinglishEngine.transliterate(sinhalaBuffer.toString())
-        } else {
-            ""
+    /** Show live Sinhala in the app's input field while typing. */
+    private fun updateComposingText() {
+        val ic = currentInputConnection ?: return
+        if (sinhalaBuffer.isEmpty()) {
+            ic.setComposingText("", 0)
+            return
+        }
+        val sinhala = SinglishEngine.transliterate(sinhalaBuffer.toString())
+        ic.setComposingText(sinhala, 1)
+    }
+
+    private fun clearComposingText() {
+        currentInputConnection?.finishComposingText()
+    }
+
+    /** Show word suggestions in the bar above the keys. */
+    private fun updateSuggestions() {
+        val row = suggestionRow ?: return
+        row.removeAllViews()
+
+        if (language != Language.SINHALA || sinhalaBuffer.isEmpty()) return
+
+        val suggestions = SinglishEngine.suggestions(sinhalaBuffer.toString())
+        for (suggestion in suggestions) {
+            val chip = TextView(this).apply {
+                text = suggestion
+                textSize = 16f
+                setTextColor(0xFF1B5E20.toInt())
+                setPadding(24, 12, 24, 12)
+                setBackgroundResource(R.drawable.suggestion_chip_bg)
+                val params = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                ).apply { marginEnd = 8 }
+                layoutParams = params
+                setOnClickListener {
+                    sinhalaBuffer.clear()
+                    commitSinhalaWord(suggestion)
+                }
+            }
+            row.addView(chip)
         }
     }
 
@@ -166,7 +246,7 @@ class KeyboardService : InputMethodService() {
             R.id.keyN to "n", R.id.keyM to "m",
         )
         for ((id, letter) in letters) {
-            view.findViewById<Button>(id).text = if (shiftOn) letter.uppercase() else letter
+            view.findViewById<TextView>(id).text = if (shiftOn) letter.uppercase() else letter
         }
     }
 
@@ -181,13 +261,13 @@ class KeyboardService : InputMethodService() {
             Language.SINHALA -> {
                 btnLang?.text = getString(R.string.mode_sinhala)
                 btnFix?.visibility = View.GONE
-                previewBar?.visibility = View.VISIBLE
+                suggestionRow?.visibility = View.VISIBLE
             }
             Language.ENGLISH -> {
                 btnLang?.text = getString(R.string.mode_english)
                 btnFix?.visibility = View.VISIBLE
-                previewBar?.visibility = View.GONE
-                previewBar?.text = ""
+                suggestionRow?.visibility = View.GONE
+                suggestionRow?.removeAllViews()
             }
         }
     }
@@ -205,7 +285,7 @@ class KeyboardService : InputMethodService() {
             progress?.visibility = View.VISIBLE
             btnFix?.isEnabled = false
 
-            val text = withContext(Dispatchers.Main) { getCurrentSentence(ic) }
+            val text = withContext(Dispatchers.Main) { getFieldText(ic) }
             if (text.isBlank()) {
                 progress?.visibility = View.GONE
                 btnFix?.isEnabled = true
@@ -217,49 +297,37 @@ class KeyboardService : InputMethodService() {
             btnFix?.isEnabled = true
 
             result.onSuccess { corrected ->
-                replaceCurrentSentence(ic, text, corrected)
+                replaceFieldText(ic, corrected)
             }.onFailure {
                 Toast.makeText(this@KeyboardService, R.string.grammar_error, Toast.LENGTH_SHORT).show()
             }
         }
     }
 
-    private fun getCurrentSentence(ic: android.view.inputmethod.InputConnection): String {
-        val extracted = ic.getExtractedText(ExtractedTextRequest(), 0) ?: return ""
-        val full = extracted.text?.toString().orEmpty()
-        if (full.isEmpty()) return ""
-
-        val cursor = extracted.selectionStart.coerceIn(0, full.length)
-        var start = cursor
-        while (start > 0 && !full[start - 1].isSentenceBreak()) start--
-        var end = cursor
-        while (end < full.length && !full[end].isSentenceBreak()) end++
-        return full.substring(start, end).trim()
+    private fun getFieldText(ic: InputConnection): String {
+        val before = ic.getTextBeforeCursor(5000, 0)?.toString().orEmpty()
+        val after = ic.getTextAfterCursor(5000, 0)?.toString().orEmpty()
+        return (before + after).trim()
     }
 
-    private fun replaceCurrentSentence(
-        ic: android.view.inputmethod.InputConnection,
-        original: String,
-        corrected: String,
-    ) {
-        if (original.isEmpty()) {
-            ic.commitText(corrected, 1)
-            return
-        }
-        val before = original.length
-        ic.deleteSurroundingText(before, 0)
-        ic.commitText(corrected, 1)
+    private fun replaceFieldText(ic: InputConnection, newText: String) {
+        val before = ic.getTextBeforeCursor(5000, 0)?.length ?: 0
+        val after = ic.getTextAfterCursor(5000, 0)?.length ?: 0
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(before, after)
+        ic.commitText(newText, 1)
+        ic.endBatchEdit()
     }
-
-    private fun Char.isSentenceBreak(): Boolean = this == '.' || this == '!' || this == '?' || this == '\n'
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         sinhalaBuffer.clear()
-        updatePreview()
+        clearComposingText()
+        updateSuggestions()
     }
 
     override fun onDestroy() {
+        stopRepeat()
         scope.cancel()
         super.onDestroy()
     }
