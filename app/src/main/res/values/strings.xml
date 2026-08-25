@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Sinhala Keyboard</string>
+    <string name="keyboard_name">Sinhala Singlish Keyboard</string>
+    <string name="settings_title">Keyboard Settings</string>
+    <string name="api_key_hint">OpenRouter API Key</string>
+    <string name="save">Save</string>
+    <string name="api_key_saved">API key saved</string>
+    <string name="api_key_missing">Add your OpenRouter API key in Settings first</string>
+    <string name="fixing_grammar">Fixing grammar…</string>
+    <string name="grammar_error">Grammar fix failed</string>
+    <string name="mode_sinhala">සිං</string>
+    <string name="mode_english">EN</string>
+    <string name="key_fix">Fix</string>
+    <string name="openrouter_info">Get a key at openrouter.ai/keys — model: google/gemini-3-flash-preview</string>
+</resources>
