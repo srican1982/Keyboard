@@ -1,34 +1,87 @@
 #!/usr/bin/env python3
-words = [
-    ("enna", "\u0d91\u0db1\u0dca\u0db1"),
-    ("ennam", "\u0d91\u0db1\u0dca\u0db1\u0db8\u0dca"),
-    ("en", "\u0d91\u0db1\u0dca"),
-    ("mama", "\u0db8\u0db8"),
-    ("amma", "\u0d85\u0db8\u0dca\u0db8"),
-    ("thaththa", "\u0dad\u0dcf\u0dad\u0dca\u0dad\u0dcf"),
-    ("nangi", "\u0dba\u0d82\u0da2\u0dd2"),
-    ("malli", "\u0db8\u0dbd\u0dca\u0dbd\u0dd2"),
-    ("ayubowan", "\u0d86\u0dba\u0dd4\u0db6\u0ddc\u0dc0\u0db1\u0dca"),
-    ("kohomada", "\u0d9a\u0ddc\u0dc4\u0ddc\u0db8\u0daf"),
-    ("kohomath", "\u0d9a\u0ddc\u0dc4\u0ddc\u0db8\u0daf"),
-    ("stuti", "\u0dc3\u0dca\u0dad\u0dd2\u0dad\u0dd2"),
-    ("istuti", "\u0d87\u0dc3\u0dca\u0dad\u0dd2\u0dad\u0dd2"),
-    ("oyata", "\u0d94\u0dba\u0dcf\u0da7"),
-    ("mata", "\u0db8\u0da7"),
-    ("hari", "\u0dc4\u0dba\u0dd2"),
-    ("ow", "\u0d94\u0dc0\u0dca"),
-    ("na", "\u0dab"),
-    ("yanna", "\u0dba\u0db1\u0dca\u0db1"),
-    ("denna", "\u0daf\u0dd9\u0db1\u0dca\u0db1"),
-    ("ganna", "\u0d9c\u0db1\u0dca\u0db1"),
-    ("balanna", "\u0db6\u0db1\u0dca\u0db1"),
-    ("kiyanna", "\u0d9a\u0dd2\u0dba\u0db1\u0dca\u0db1"),
-    ("hondai", "\u0dc4\u0ddc\u0db1\u0dca\u0daf\u0dd2"),
-    ("watura", "\u0dc0\u0dad\u0dd4\u0db1\u0dca"),
-]
+"""Build sinhala_dict.txt with manual overrides for common Singlish words."""
 
-out = r"f:\newacu\sinhala-keyboard\app\src\main\assets\sinhala_dict.txt"
-with open(out, "w", encoding="utf-8") as f:
-    for k, v in words:
-        f.write(f"{k}|{v}\n")
-print(len(words))
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+OUT = ROOT / "app" / "src" / "main" / "assets" / "sinhala_dict.txt"
+
+ENTRIES: dict[str, tuple[str, int]] = {
+    "mama": ("මම", 100),
+    "amma": ("අම්ම", 95),
+    "ammaa": ("අම්මා", 95),
+    "thaththa": ("තාත්තා", 100),
+    "thaththi": ("තාත්ති", 90),
+    "nangi": ("නංගි", 95),
+    "malli": ("මල්ලි", 95),
+    "ayubowan": ("ආයුබොවන්", 100),
+    "aayuboowan": ("ආයුබෝවන්", 90),
+    "kohomada": ("කොහොමද", 100),
+    "kohomath": ("කොහොමද", 95),
+    "kohomd": ("කොහොමද", 80),
+    "kohmd": ("කොහොමද", 75),
+    "monawada": ("මොනවද", 90),
+    "mokada": ("මොකද", 90),
+    "enna": ("එන්න", 100),
+    "ennam": ("එන්නම්", 95),
+    "en": ("එන්", 80),
+    "yanna": ("යන්න", 100),
+    "denna": ("දෙන්න", 95),
+    "ganna": ("ගන්න", 95),
+    "balanna": ("බලන්න", 95),
+    "kiyanna": ("කියන්න", 95),
+    "enawa": ("එනවා", 90),
+    "yanawa": ("යනවා", 90),
+    "thiyenawa": ("තියෙනවා", 90),
+    "karanawa": ("කරනවා", 90),
+    "balanawa": ("බලනවා", 85),
+    "gannawa": ("ගන්නවා", 85),
+    "gihin": ("ගිහින්", 85),
+    "oyata": ("ඔයාට", 95),
+    "mata": ("මට", 100),
+    "oyaa": ("ඔයා", 95),
+    "mage": ("මගේ", 95),
+    "oyage": ("ඔයාගේ", 90),
+    "api": ("අපි", 95),
+    "hari": ("හරි", 100),
+    "ow": ("ඔව්", 95),
+    "na": ("නැ", 90),
+    "ey": ("එයි", 85),
+    "eyi": ("එයි", 80),
+    "dan": ("දැන්", 90),
+    "saha": ("සහ", 90),
+    "sama": ("සම", 80),
+    "hondai": ("හොඳයි", 100),
+    "lassanai": ("ලස්සනයි", 95),
+    "sundara": ("සුන්දර", 90),
+    "bohoma": ("බොහොම", 90),
+    "pin": ("පින්", 85),
+    "watura": ("වතුර", 95),
+    "stuti": ("\u0dc3\u0dca\u0dad\u0dd2\u0dad\u0dd2", 90),
+    "istuti": ("\u0d87\u0dc3\u0dca\u0dad\u0dd2\u0dad\u0dd2", 90),
+    "lankawa": ("ලංකාව", 100),
+    "lanka": ("ලංකා", 95),
+    "gedhara": ("ගෙදර", 95),
+    "paasala": ("පාසල", 90),
+    "pasala": ("පාසල", 85),
+    "colombo": ("කොළඹ", 90),
+    "kandy": ("මහනුවර", 80),
+    "shri": ("ශ්‍රී", 90),
+    "bankuwa": ("බැංකුව", 90),
+    "banga": ("බැංකු", 85),
+    "bng": ("බැංකුව", 70),
+    "bnk": ("බැංකු", 60),
+    "kata": ("කතා", 85),
+}
+
+def main() -> None:
+    lines = [
+        f"{key}|{value}|{freq}"
+        for key, (value, freq) in sorted(ENTRIES.items(), key=lambda x: -x[1][1])
+    ]
+    OUT.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"Wrote {len(lines)} entries to {OUT}")
+
+
+if __name__ == "__main__":
+    main()

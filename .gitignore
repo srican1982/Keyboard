@@ -11,3 +11,5 @@
 *.apk
 *.aab
 *.hprof
+node_modules/
+*.tgz

@@ -1,0 +1,11 @@
+Sinhala Keyboard
+
+This project includes transliteration logic ported from:
+
+  @siyabasa/singlish (https://github.com/remeinium/singlish)
+  Copyright Remeinium Siyabasa Labs
+  Licensed under the Apache License, Version 2.0
+
+See LICENSE files and https://github.com/remeinium/singlish/blob/main/LICENSE
+
+Phonetic mapping scheme inspired by Helakuru (https://helakuru.lk).
