@@ -59,15 +59,12 @@ class TypingMemory(context: Context) {
         saveAsync()
     }
 
-    /** User explicitly saved a word (+ Add word) — boosted so it ranks high in suggestions. */
-    fun saveCustomWord(roman: String, output: String) {
+    /** User explicitly saved a word (+ Add word) — boosted, shown as roman in suggestions. */
+    fun saveCustomWord(roman: String) {
         val key = roman.trim().lowercase()
-        val value = output.trim()
-        if (key.length < 2 || value.isEmpty()) return
+        if (key.length < 2) return
         if (!SinhalaSuggestionRules.isReasonableRomanKey(key)) return
-        val romanOnly = !containsSinhalaScript(value)
-        if (!romanOnly && !SinhalaSuggestionRules.isReasonableSinhalaSuggestion(value, key.length)) return
-        bump(sinhalaByRoman, key, if (romanOnly) key else value)
+        bump(sinhalaByRoman, key, key)
         sinhalaByRoman[key]?.count = (sinhalaByRoman[key]?.count ?: 1) + 8
         saveAsync()
     }
@@ -86,7 +83,7 @@ class TypingMemory(context: Context) {
             .map { (romanKey, entry) ->
                 val singlishRoman = !containsSinhalaScript(entry.value)
                 SuggestionCandidate(
-                    display = if (singlishRoman) romanKey else entry.value,
+                    display = romanKey,
                     commitText = if (singlishRoman) romanKey else entry.value,
                     isPersonal = true,
                     isSinglishRoman = singlishRoman,

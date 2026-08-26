@@ -2,6 +2,7 @@ mama|මම|100
 thaththa|තාත්තා|100
 ayubowan|ආයුබොවන්|100
 kohomada|කොහොමද|100
+koheda|කොහෙද|95
 enna|එන්න|100
 yanna|යන්න|100
 mata|මට|100

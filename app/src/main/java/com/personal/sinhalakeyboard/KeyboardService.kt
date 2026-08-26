@@ -479,7 +479,7 @@ class KeyboardService : InputMethodService() {
     private fun onSpace() {
         hapticKey()
         val ic = currentInputConnection ?: return
-        if (language == Language.SINHALA && addWordMode) {
+        if (addWordMode) {
             finishAddWord()
             return
         }
@@ -520,12 +520,19 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun refreshAfterBackspace() {
-        if (language == Language.SINHALA) {
-            if (addWordMode && sinhalaBuffer.isEmpty()) {
+        if (addWordMode) {
+            val empty = if (language == Language.SINHALA) {
+                sinhalaBuffer.isEmpty()
+            } else {
+                getCurrentWord(currentInputConnection ?: return).isEmpty()
+            }
+            if (empty) {
                 addWordMode = false
                 clearSuggestions()
                 return
             }
+        }
+        if (language == Language.SINHALA) {
             if (sinhalaBuffer.isNotEmpty()) {
                 updateSinhalaSuggestions()
             } else {
@@ -593,6 +600,13 @@ class KeyboardService : InputMethodService() {
         if (trailingSpace) updateNextWordSuggestions()
     }
 
+    private fun commitSinglishRomanAsSinhala(roman: String, trailingSpace: Boolean = false) {
+        val sinhala = singlishEngine.transliterate(roman)
+        sinhalaBuffer.clear()
+        sinhalaBuffer.append(roman)
+        commitSinhalaWord(sinhala, trailingSpace)
+    }
+
     private fun commitDirect(text: String) {
         hapticKey()
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
@@ -653,14 +667,29 @@ class KeyboardService : InputMethodService() {
 
     private fun startAddWordMode() {
         addWordMode = true
-        if (sinhalaBuffer.isEmpty()) {
-            clearComposingText()
-            showAddWordHintRow()
-            Toast.makeText(this, R.string.add_word_hint, Toast.LENGTH_LONG).show()
-        } else {
-            Toast.makeText(this, R.string.add_word_pick_hint, Toast.LENGTH_SHORT).show()
-            updateComposingText()
-            updateSinhalaSuggestions()
+        when (language) {
+            Language.SINHALA -> {
+                if (sinhalaBuffer.isEmpty()) {
+                    clearComposingText()
+                    showAddWordHintRow()
+                    Toast.makeText(this, R.string.add_word_hint, Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, R.string.add_word_pick_hint, Toast.LENGTH_SHORT).show()
+                    updateComposingText()
+                    updateSinhalaSuggestions()
+                }
+            }
+            Language.ENGLISH -> {
+                val ic = currentInputConnection
+                val partial = ic?.let { getCurrentWord(it) }.orEmpty()
+                if (partial.isEmpty()) {
+                    showAddWordHintRow()
+                    Toast.makeText(this, R.string.add_word_hint, Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(this, R.string.add_word_pick_hint, Toast.LENGTH_SHORT).show()
+                    updateEnglishSuggestions()
+                }
+            }
         }
     }
 
@@ -677,8 +706,15 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun finishAddWord() {
-        val roman = sinhalaBuffer.toString().trim()
         addWordMode = false
+        when (language) {
+            Language.SINHALA -> finishAddWordSinhala()
+            Language.ENGLISH -> finishAddWordEnglish()
+        }
+    }
+
+    private fun finishAddWordSinhala() {
+        val roman = sinhalaBuffer.toString().trim()
         if (roman.length < 2) {
             sinhalaBuffer.clear()
             clearComposingText()
@@ -686,43 +722,77 @@ class KeyboardService : InputMethodService() {
             currentInputConnection?.commitText(" ", 1)
             return
         }
+        saveWordFromAddMode(roman)
         val sinhala = singlishEngine.transliterate(roman)
-        typingMemory.saveCustomWord(roman, sinhala)
-        Toast.makeText(this, R.string.word_saved, Toast.LENGTH_SHORT).show()
         commitSinhalaWord(sinhala, trailingSpace = true)
         clearSuggestions()
+    }
+
+    private fun finishAddWordEnglish() {
+        val ic = currentInputConnection ?: return
+        val roman = getCurrentWord(ic).trim()
+        if (roman.length < 2) {
+            clearSuggestions()
+            ic.commitText(" ", 1)
+            return
+        }
+        saveWordFromAddMode(roman)
+        ic.commitText(" ", 1)
+        updateNextWordSuggestions()
+    }
+
+    private fun saveWordFromAddMode(roman: String) {
+        val key = roman.trim().lowercase()
+        if (key.length >= 2) {
+            typingMemory.saveCustomWord(key)
+            Toast.makeText(this, R.string.word_saved, Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun pickSinhalaSuggestion(candidate: SuggestionCandidate) {
         when {
             candidate.isAddWord -> startAddWordMode()
             addWordMode -> {
-                val roman = sinhalaBuffer.toString().trim()
+                val roman = when (language) {
+                    Language.SINHALA -> sinhalaBuffer.toString().trim()
+                    Language.ENGLISH -> getCurrentWord(currentInputConnection ?: return).trim()
+                }
                 addWordMode = false
+                saveWordFromAddMode(roman)
                 when {
                     candidate.isSinglishRoman || candidate.isRoman -> {
-                        if (roman.isNotEmpty()) {
-                            typingMemory.saveCustomWord(roman, candidate.commitText)
-                            Toast.makeText(this, R.string.word_saved, Toast.LENGTH_SHORT).show()
+                        if (language == Language.SINHALA) {
+                            commitSinglishRomanAsSinhala(candidate.commitText, trailingSpace = true)
+                        } else {
+                            val ic = currentInputConnection ?: return
+                            replaceCurrentWord(ic, roman, candidate.commitText, trailingSpace = true)
                         }
-                        commitRomanWord(candidate.commitText, trailingSpace = true)
+                    }
+                    language == Language.SINHALA -> {
+                        commitSinhalaWord(candidate.commitText, trailingSpace = true)
+                        clearSuggestions()
                     }
                     else -> {
-                        if (roman.isNotEmpty()) {
-                            typingMemory.saveCustomWord(roman, candidate.commitText)
-                            Toast.makeText(this, R.string.word_saved, Toast.LENGTH_SHORT).show()
-                        }
-                        commitSinhalaWord(candidate.commitText, trailingSpace = true)
+                        val ic = currentInputConnection ?: return
+                        replaceCurrentWord(ic, roman, candidate.commitText, trailingSpace = true)
                         clearSuggestions()
                     }
                 }
             }
             candidate.isSinglishRoman -> {
-                commitRomanWord(candidate.commitText, trailingSpace = true)
+                if (language == Language.SINHALA) {
+                    commitSinglishRomanAsSinhala(candidate.commitText, trailingSpace = true)
+                } else {
+                    commitRomanWord(candidate.commitText, trailingSpace = true)
+                }
                 typingMemory.rememberSinglishRoman(candidate.commitText)
             }
             candidate.isRoman -> {
-                commitRomanWord(candidate.commitText, trailingSpace = true)
+                if (language == Language.SINHALA) {
+                    commitSinglishRomanAsSinhala(candidate.commitText, trailingSpace = true)
+                } else {
+                    commitRomanWord(candidate.commitText, trailingSpace = true)
+                }
             }
             else -> {
                 commitSinhalaWord(candidate.commitText, trailingSpace = true)
@@ -736,18 +806,74 @@ class KeyboardService : InputMethodService() {
         val word = getCurrentWord(ic)
         if (word.isEmpty()) {
             englishCloudJob?.cancel()
-            updateNextWordSuggestions()
+            if (addWordMode) {
+                showAddWordHintRow()
+            } else {
+                updateNextWordSuggestions()
+            }
             return
         }
         englishCloudJob?.cancel()
-        englishSuggestions.suggest(word) { items ->
+
+        val instantSinglish = singlishEngine.romanPrefixSuggestions(word, limit = 10)
+        if (instantSinglish.isNotEmpty() || addWordMode) {
+            renderEnglishSuggestions(word, instantSinglish)
+        }
+
+        englishSuggestions.suggest(word) { englishItems ->
             val liveIc = currentInputConnection ?: return@suggest
-            if (getCurrentWord(liveIc) != word) return@suggest
-            renderSuggestions(items) { candidate ->
-                replaceCurrentWord(liveIc, word, candidate.commitText, trailingSpace = true)
+            val liveWord = getCurrentWord(liveIc)
+            if (liveWord != word) return@suggest
+            val singlish = singlishEngine.romanPrefixSuggestions(liveWord, limit = 10)
+            val merged = mergeSinglishFirst(singlish, englishItems)
+            renderEnglishSuggestions(liveWord, merged)
+            fetchEnglishCloudWordCompletions(liveWord, merged)
+        }
+    }
+
+    private fun renderEnglishSuggestions(partialWord: String, items: List<SuggestionCandidate>) {
+        val withActions = items.toMutableList().apply {
+            if (!addWordMode) {
+                add(
+                    SuggestionCandidate(
+                        display = getString(R.string.suggestion_add_word),
+                        commitText = "",
+                        isAction = true,
+                        isAddWord = true,
+                    ),
+                )
+            }
+        }
+        renderSuggestions(withActions) { pickEnglishSuggestion(it, partialWord) }
+    }
+
+    private fun mergeSinglishFirst(
+        singlish: List<SuggestionCandidate>,
+        english: List<SuggestionCandidate>,
+    ): List<SuggestionCandidate> {
+        val merged = linkedSetOf<SuggestionCandidate>()
+        singlish.forEach { merged.add(it) }
+        english.forEach { merged.add(it) }
+        return merged.take(12).toList()
+    }
+
+    private fun pickEnglishSuggestion(candidate: SuggestionCandidate, partialWord: String) {
+        val ic = currentInputConnection ?: return
+        when {
+            candidate.isAddWord -> startAddWordMode()
+            addWordMode -> {
+                val typed = getCurrentWord(ic).trim()
+                addWordMode = false
+                saveWordFromAddMode(typed)
+                if (!candidate.isAction) {
+                    replaceCurrentWord(ic, partialWord, candidate.commitText, trailingSpace = true)
+                    clearSuggestions()
+                }
+            }
+            else -> {
+                replaceCurrentWord(ic, partialWord, candidate.commitText, trailingSpace = true)
                 clearSuggestions()
             }
-            fetchEnglishCloudWordCompletions(word, items)
         }
     }
 

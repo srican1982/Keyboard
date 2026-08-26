@@ -62,8 +62,11 @@ class SinglishEngine(
             results.add(SuggestionCandidate(sinhala, sinhala))
         }
 
-        // Layer 0: words you typed before (personal history)
+        // Layer 0: words you typed before (personal history — koheda when typing ko)
         typingMemory?.sinhalaSuggestions(p, limit = 5)?.forEach { results.add(it) }
+
+        // Layer 0.5: longer roman dictionary words (e.g. ko → koheda, kohomada)
+        addRomanDictionaryPrefixes(lower, results, limit)
 
         // Layer 1: live conversion + phonetic ambiguities (කො/කෝ for ko) — always before dictionary
         val ruleOutput = SinglishConverter.convert(p)
@@ -95,6 +98,35 @@ class SinglishEngine(
         results.add(SuggestionCandidate(roman, p, isRoman = true))
 
         return results.take(limit).toList()
+    }
+
+    /** Instant roman-word chips for English/Singlish typing — no AI delay. */
+    fun romanPrefixSuggestions(prefix: String, limit: Int = 10): List<SuggestionCandidate> {
+        val p = prefix.trim()
+        if (p.isEmpty()) return emptyList()
+        val lower = p.lowercase()
+        val results = LinkedHashSet<SuggestionCandidate>()
+        typingMemory?.sinhalaSuggestions(p, limit = 6)?.forEach { results.add(it) }
+        addRomanDictionaryPrefixes(lower, results, limit)
+        return results.take(limit).toList()
+    }
+
+    private fun addRomanDictionaryPrefixes(
+        lower: String,
+        results: LinkedHashSet<SuggestionCandidate>,
+        limit: Int,
+    ) {
+        dictionary.entries
+            .filter { it.key.startsWith(lower) && it.key.length > lower.length }
+            .sortedWith(
+                compareByDescending<Map.Entry<String, String>> { frequency[it.key] ?: 0 }
+                    .thenBy { it.key.length }
+                    .thenBy { it.key },
+            )
+            .forEach { (romanKey, _) ->
+                results.add(SuggestionCandidate(romanKey, romanKey, isRoman = true))
+                if (results.size >= limit) return
+            }
     }
 
     /** Lazy typing: "bng" matches "banga" / "bankuwa" style keys in dictionary. */
