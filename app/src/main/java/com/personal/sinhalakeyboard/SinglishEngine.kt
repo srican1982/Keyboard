@@ -62,12 +62,22 @@ class SinglishEngine(
             results.add(SuggestionCandidate(sinhala, sinhala))
         }
 
-        // Layer 0: words you typed before (highest priority)
-        typingMemory?.sinhalaSuggestions(p, limit = 4)
-            ?.filter { SinhalaSuggestionRules.isReasonableSinhalaSuggestion(it.display, p.length) }
-            ?.forEach { results.add(it) }
+        // Layer 0: words you typed before (personal history)
+        typingMemory?.sinhalaSuggestions(p, limit = 3)?.forEach { results.add(it) }
 
-        // Layer 3: dictionary prefix + lazy spellings (higher frequency first)
+        // Layer 1: live conversion + phonetic ambiguities (කො/කෝ for ko) — always before dictionary
+        val ruleOutput = SinglishConverter.convert(p)
+        if (ruleOutput.isNotEmpty()) {
+            addSinhala(ruleOutput)
+        }
+        for (variant in SinglishAmbiguityVariants.liveVariants(p)) {
+            val sinhala = SinglishConverter.convert(variant)
+            if (sinhala.isNotEmpty() && sinhala != ruleOutput) {
+                addSinhala(sinhala)
+            }
+        }
+
+        // Layer 2: dictionary prefix + lazy spellings
         dictionary.entries
             .filter { it.key.startsWith(lower) || fuzzyMatch(it.key, lower) }
             .sortedWith(
@@ -80,19 +90,7 @@ class SinglishEngine(
                 if (results.size >= limit) return results.take(limit).toList()
             }
 
-        // Rule-based output + ambiguous consonant variants (sh/ශ vs Sh/ෂ, etc.)
-        val ruleOutput = SinglishConverter.convert(p)
-        if (ruleOutput.isNotEmpty()) {
-            addSinhala(ruleOutput)
-        }
-        for (variant in SinglishAmbiguityVariants.liveVariants(p)) {
-            val sinhala = SinglishConverter.convert(variant)
-            if (sinhala.isNotEmpty() && sinhala != ruleOutput) {
-                addSinhala(sinhala)
-            }
-        }
-
-        // Roman / Singlish keep-as-typed option
+        // Layer 3: keep-as-Singlish (capitalized preview)
         val roman = p.replaceFirstChar { it.uppercaseChar() }
         results.add(SuggestionCandidate(roman, p, isRoman = true))
 

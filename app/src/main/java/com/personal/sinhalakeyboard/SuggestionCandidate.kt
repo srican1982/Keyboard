@@ -7,4 +7,8 @@ data class SuggestionCandidate(
     val isNextWord: Boolean = false,
     val isCloud: Boolean = false,
     val isPersonal: Boolean = false,
+    /** Keep the Singlish letters as typed (not converted to Sinhala script). */
+    val isSinglishRoman: Boolean = false,
+    /** Toolbar-style action chip (keep typed, etc.). */
+    val isAction: Boolean = false,
 )

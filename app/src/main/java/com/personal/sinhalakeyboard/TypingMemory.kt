@@ -51,6 +51,14 @@ class TypingMemory(context: Context) {
         saveAsync()
     }
 
+    fun rememberSinglishRoman(roman: String) {
+        val key = roman.trim().lowercase()
+        if (key.length < 2) return
+        if (!SinhalaSuggestionRules.isReasonableRomanKey(key)) return
+        bump(sinhalaByRoman, key, key)
+        saveAsync()
+    }
+
     fun sinhalaSuggestions(prefix: String, limit: Int = 4): List<SuggestionCandidate> {
         val key = prefix.trim().lowercase()
         if (key.isEmpty()) return emptyList()
@@ -58,14 +66,19 @@ class TypingMemory(context: Context) {
             .filter { it.key.startsWith(key) }
             .sortedWith(compareByDescending<Map.Entry<String, Entry>> { it.value.count }.thenBy { it.key })
             .take(limit)
-            .map { (_, entry) ->
+            .map { (romanKey, entry) ->
+                val singlishRoman = !containsSinhalaScript(entry.value)
                 SuggestionCandidate(
-                    display = entry.value,
-                    commitText = entry.value,
+                    display = if (singlishRoman) romanKey else entry.value,
+                    commitText = if (singlishRoman) romanKey else entry.value,
                     isPersonal = true,
+                    isSinglishRoman = singlishRoman,
                 )
             }
     }
+
+    private fun containsSinhalaScript(text: String): Boolean =
+        text.any { it.code in 0x0D80..0x0DFF }
 
     fun englishSuggestions(prefix: String, limit: Int = 4): List<SuggestionCandidate> {
         val key = prefix.trim().lowercase()

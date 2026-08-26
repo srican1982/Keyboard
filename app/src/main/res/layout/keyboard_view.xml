@@ -58,6 +58,14 @@
                 android:textColor="#FFFFFF" />
 
             <TextView
+                android:id="@+id/btnToEnglish"
+                style="@style/ToolbarButton"
+                android:background="@drawable/toolbar_btn_translate"
+                android:text="@string/key_to_english"
+                android:textColor="#FFFFFF"
+                android:visibility="gone" />
+
+            <TextView
                 android:id="@+id/btnFix"
                 style="@style/ToolbarButton"
                 android:background="@drawable/toolbar_btn_fix"

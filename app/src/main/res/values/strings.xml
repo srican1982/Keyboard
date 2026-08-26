@@ -18,6 +18,10 @@
     <string name="key_send">Send</string>
     <string name="key_mic">Microphone</string>
     <string name="open_settings">Keyboard settings</string>
+    <string name="key_to_english">→EN</string>
+    <string name="translating_singlish">Translating Singlish to English…</string>
+    <string name="translate_error">Singlish translation failed</string>
+    <string name="suggestion_keep_typed">⌨ %1$s</string>
     <string name="emoji_recent">Recent</string>
     <string name="tone_professional">Pro</string>
     <string name="tone_friendly">Friendly</string>
