@@ -31,7 +31,7 @@ object Prefs {
     }
 
     fun isAutoCorrectOnSpace(context: Context): Boolean =
-        prefs(context).getBoolean(KEY_AUTO_CORRECT, true)
+        prefs(context).getBoolean(KEY_AUTO_CORRECT, false)
 
     fun setAutoCorrectOnSpace(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_AUTO_CORRECT, enabled).apply()

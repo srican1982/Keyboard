@@ -23,7 +23,7 @@
     <string name="voice_listening">Listening…</string>
     <string name="mic_permission_needed">Allow microphone for Sinhala Keyboard in app settings</string>
     <string name="auto_correct_title">Auto-complete on space</string>
-    <string name="auto_correct_summary">Apply the top suggestion when you press space (like Gboard)</string>
+    <string name="auto_correct_summary">Off by default — tap a suggestion chip to apply it</string>
     <string name="mic_settings_title">Voice typing</string>
     <string name="mic_settings_summary">Tap Mic on the keyboard. Enable continuous mode to keep listening.</string>
     <string name="grant_mic">Allow microphone</string>

@@ -45,6 +45,7 @@ class KeyboardService : InputMethodService() {
 
     private var keyboardView: View? = null
     private var suggestionRow: LinearLayout? = null
+    private var suggestionScroll: View? = null
     private var btnLang: TextView? = null
     private var btnMic: ImageView? = null
     private var btnFix: TextView? = null
@@ -74,7 +75,6 @@ class KeyboardService : InputMethodService() {
     private var sinhalaSuggestionColor = 0xFF1B5E20.toInt()
     private var romanSuggestionColor = 0xFF616161.toInt()
     private var suggestionChipBg = R.drawable.suggestion_chip_light
-    private var suggestionChipPrimaryBg = R.drawable.suggestion_chip_primary_light
 
     private val letterKeyIds = listOf(
         R.id.keyQ, R.id.keyW, R.id.keyE, R.id.keyR, R.id.keyT, R.id.keyY, R.id.keyU,
@@ -120,6 +120,7 @@ class KeyboardService : InputMethodService() {
         val view = LayoutInflater.from(this).inflate(R.layout.keyboard_view, null)
         keyboardView = view
         suggestionRow = view.findViewById(R.id.suggestionRow)
+        suggestionScroll = view.findViewById(R.id.suggestionScroll)
         btnLang = view.findViewById(R.id.btnLang)
         btnMic = view.findViewById(R.id.btnMic)
         btnFix = view.findViewById(R.id.btnFix)
@@ -168,11 +169,10 @@ class KeyboardService : InputMethodService() {
                 keyBg = R.drawable.key_bg_light
                 keyTextColor = 0xFF212121.toInt()
                 keyMutedColor = 0xFF616161.toInt()
-                btnLangBg = R.drawable.btn_3d_light
-                btnMicBg = R.drawable.btn_3d_mic_light
-                btnFixBg = R.drawable.btn_3d_fix_light
+                btnLangBg = R.drawable.toolbar_btn_lang
+                btnMicBg = R.drawable.toolbar_btn_mic
+                btnFixBg = R.drawable.toolbar_btn_fix
                 suggestionChipBg = R.drawable.suggestion_chip_light
-                suggestionChipPrimaryBg = R.drawable.suggestion_chip_primary_light
                 sinhalaSuggestionColor = 0xFF1B5E20.toInt()
                 romanSuggestionColor = 0xFF616161.toInt()
             }
@@ -181,11 +181,10 @@ class KeyboardService : InputMethodService() {
                 keyBg = R.drawable.key_bg_dark
                 keyTextColor = 0xFFFFFFFF.toInt()
                 keyMutedColor = 0xFFB0BEC5.toInt()
-                btnLangBg = R.drawable.btn_3d_dark
-                btnMicBg = R.drawable.btn_3d_mic_dark
-                btnFixBg = R.drawable.btn_3d_fix_dark
+                btnLangBg = R.drawable.toolbar_btn_lang
+                btnMicBg = R.drawable.toolbar_btn_mic
+                btnFixBg = R.drawable.toolbar_btn_fix
                 suggestionChipBg = R.drawable.suggestion_chip_dark
-                suggestionChipPrimaryBg = R.drawable.suggestion_chip_primary_dark
                 sinhalaSuggestionColor = 0xFF81C784.toInt()
                 romanSuggestionColor = 0xFFB0BEC5.toInt()
             }
@@ -413,49 +412,14 @@ class KeyboardService : InputMethodService() {
 
     private fun onSpace() {
         val ic = currentInputConnection ?: return
-        val currentWord = getCurrentWord(ic)
-        if (Prefs.isAutoCorrectOnSpace(this)) {
-            if (currentWord.isEmpty() && primarySuggestion?.isNextWord == true) {
-                val picked = primarySuggestion!!.commitText
-                ic.commitText("$picked ", 1)
-                rememberWordCommitted(picked)
-                updateNextWordSuggestions()
-                return
-            }
-            applyAutoCorrectBeforeBreak()
-        } else if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
+        if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
-        } else if (language == Language.ENGLISH && currentWord.isNotEmpty()) {
-            rememberWordCommitted(currentWord)
+        } else if (language == Language.ENGLISH) {
+            val word = getCurrentWord(ic)
+            if (word.isNotEmpty()) rememberWordCommitted(word)
         }
         ic.commitText(" ", 1)
         updateNextWordSuggestions()
-    }
-
-    private fun applyAutoCorrectBeforeBreak() {
-        if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
-            val typed = sinhalaBuffer.toString()
-            val pick = primarySuggestion?.takeIf { !it.isRoman }?.commitText
-            if (pick != null && pick != singlishEngine.transliterateLive(typed)) {
-                commitSinhalaWord(pick)
-            } else {
-                commitSinhalaWord()
-            }
-            return
-        }
-        if (language == Language.ENGLISH) {
-            val ic = currentInputConnection ?: return
-            val word = getCurrentWord(ic)
-            val suggestion = primarySuggestion?.commitText
-            if (word.isNotEmpty() && !suggestion.isNullOrEmpty() &&
-                suggestion.lowercase() != word.lowercase()
-            ) {
-                replaceCurrentWord(ic, word, suggestion)
-                rememberWordCommitted(suggestion)
-            } else if (word.isNotEmpty()) {
-                rememberWordCommitted(word)
-            }
-        }
     }
 
     private fun onEnter() {
@@ -545,9 +509,9 @@ class KeyboardService : InputMethodService() {
         if (sinhalaBuffer.isEmpty()) {
             ic.setComposingText("", 0)
         } else {
-            val sinhala = singlishEngine.transliterateLive(sinhalaBuffer.toString())
-            // Cursor at end of composing text (1 = after first char only — caused freeze)
-            ic.setComposingText(sinhala, sinhala.length)
+            // Show exact Singlish typed; Sinhala appears only in suggestion row until picked or space.
+            val typed = sinhalaBuffer.toString()
+            ic.setComposingText(typed, typed.length)
         }
         ic.endBatchEdit()
     }
@@ -675,9 +639,12 @@ class KeyboardService : InputMethodService() {
     ) {
         val row = suggestionRow ?: return
         row.removeAllViews()
-        primarySuggestion = items.firstOrNull { !it.isRoman } ?: items.firstOrNull()
-        items.forEachIndexed { _, candidate ->
-            val isPrimary = candidate == primarySuggestion
+        if (items.isEmpty()) {
+            suggestionScroll?.visibility = View.GONE
+            return
+        }
+        suggestionScroll?.visibility = View.VISIBLE
+        items.forEach { candidate ->
             val label = if (candidate.isNextWord) {
                 "${getString(R.string.next_word_hint)} ${candidate.display}"
             } else {
@@ -685,7 +652,7 @@ class KeyboardService : InputMethodService() {
             }
             val chip = TextView(this).apply {
                 text = label
-                textSize = if (isPrimary) 17f else 16f
+                textSize = 15f
                 setTextColor(
                     when {
                         candidate.isPersonal -> if (activeTheme == KeyboardTheme.BLACK) {
@@ -699,20 +666,15 @@ class KeyboardService : InputMethodService() {
                             0xFF1565C0.toInt()
                         }
                         candidate.isRoman -> romanSuggestionColor
-                        isPrimary -> if (activeTheme == KeyboardTheme.BLACK) {
-                            0xFFFFFFFF.toInt()
-                        } else {
-                            0xFF1B5E20.toInt()
-                        }
                         else -> sinhalaSuggestionColor
                     },
                 )
-                setPadding(24, 12, 24, 12)
-                setBackgroundResource(if (isPrimary) suggestionChipPrimaryBg else suggestionChipBg)
+                setPadding(20, 8, 20, 8)
+                setBackgroundResource(suggestionChipBg)
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply { marginEnd = 8 }
+                ).apply { marginEnd = 6 }
                 setOnClickListener { onPick(candidate) }
             }
             row.addView(chip)
@@ -722,7 +684,7 @@ class KeyboardService : InputMethodService() {
     private fun clearSuggestions() {
         nextWordJob?.cancel()
         suggestionRow?.removeAllViews()
-        primarySuggestion = null
+        suggestionScroll?.visibility = View.GONE
     }
 
     private fun toggleVoiceInput() {
@@ -792,21 +754,13 @@ class KeyboardService : InputMethodService() {
         val friendly = btnToneFriendly ?: return
         val proActive = englishTone == EnglishTone.PROFESSIONAL
         pro.setBackgroundResource(
-            if (proActive) suggestionChipPrimaryBg else suggestionChipBg,
+            if (proActive) R.drawable.toolbar_btn_tone_on else R.drawable.toolbar_btn_tone_off,
         )
         friendly.setBackgroundResource(
-            if (!proActive) suggestionChipPrimaryBg else suggestionChipBg,
+            if (!proActive) R.drawable.toolbar_btn_tone_on else R.drawable.toolbar_btn_tone_off,
         )
-        val onPrimary = 0xFFFFFFFF.toInt()
-        val inactiveColor = if (activeTheme == KeyboardTheme.BLACK) {
-            0xFFB0BEC5.toInt()
-        } else {
-            0xFF616161.toInt()
-        }
-        pro.setTextColor(if (proActive) onPrimary else inactiveColor)
-        friendly.setTextColor(if (!proActive) onPrimary else inactiveColor)
-        pro.setTypeface(null, if (proActive) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
-        friendly.setTypeface(null, if (!proActive) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+        pro.setTextColor(if (proActive) 0xFFFFFFFF.toInt() else 0xFFCFD8DC.toInt())
+        friendly.setTextColor(if (!proActive) 0xFFFFFFFF.toInt() else 0xFFCFD8DC.toInt())
     }
 
     private fun insertVoiceText(text: String) {
