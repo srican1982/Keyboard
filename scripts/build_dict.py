@@ -57,6 +57,7 @@ ENTRIES: dict[str, tuple[str, int]] = {
     "saha": ("සහ", 90),
     "sama": ("සම", 80),
     "hondai": ("හොඳයි", 100),
+    "hondayi": ("හොඳයි", 100),
     "lassanai": ("ලස්සනයි", 95),
     "sundara": ("සුන්දර", 90),
     "bohoma": ("බොහොම", 90),

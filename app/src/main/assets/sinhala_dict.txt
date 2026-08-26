@@ -7,6 +7,7 @@ yanna|යන්න|100
 mata|මට|100
 hari|හරි|100
 hondai|හොඳයි|100
+hondayi|හොඳයි|100
 lankawa|ලංකාව|100
 amma|අම්ම|95
 ammaa|අම්මා|95

@@ -651,19 +651,9 @@ class KeyboardService : InputMethodService() {
     ) {
         val row = suggestionRow ?: return
         row.removeAllViews()
-        if (items.isEmpty()) {
-            suggestionScroll?.visibility = View.GONE
-            return
-        }
-        suggestionScroll?.visibility = View.VISIBLE
         items.forEach { candidate ->
-            val label = if (candidate.isNextWord) {
-                "${getString(R.string.next_word_hint)} ${candidate.display}"
-            } else {
-                candidate.display
-            }
             val chip = TextView(this).apply {
-                text = label
+                text = candidate.display
                 textSize = 15f
                 setTextColor(
                     when {
@@ -699,7 +689,6 @@ class KeyboardService : InputMethodService() {
     private fun clearSuggestions() {
         nextWordJob?.cancel()
         suggestionRow?.removeAllViews()
-        suggestionScroll?.visibility = View.GONE
     }
 
     private fun toggleVoiceInput() {
