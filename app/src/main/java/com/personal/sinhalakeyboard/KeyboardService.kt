@@ -337,24 +337,28 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun showEmojiLayout() {
+        hapticKey()
         if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
         keyLayout = KeyLayout.EMOJI
         applyKeyLayout()
     }
 
     private fun showLettersLayout() {
+        hapticKey()
         if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
         keyLayout = KeyLayout.LETTERS
         applyKeyLayout()
     }
 
     private fun showNumbersLayout() {
+        hapticKey()
         if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
         keyLayout = KeyLayout.NUMBERS
         applyKeyLayout()
     }
 
     private fun showSymbolsLayout() {
+        hapticKey()
         if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
         keyLayout = KeyLayout.SYMBOLS
         applyKeyLayout()
@@ -395,7 +399,12 @@ class KeyboardService : InputMethodService() {
         repeatRunnable = null
     }
 
+    private fun hapticKey() {
+        HapticHelper.keyTap(this, keyboardView)
+    }
+
     private fun onLetter(letter: String) {
+        hapticKey()
         val ch = if (shiftOn) letter.uppercase() else letter
         if (language == Language.ENGLISH) {
             currentInputConnection?.commitText(ch, 1)
@@ -410,6 +419,7 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun onSpace() {
+        hapticKey()
         val ic = currentInputConnection ?: return
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
@@ -422,6 +432,7 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun onEnter() {
+        hapticKey()
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
         }
@@ -430,6 +441,7 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun onBackspace() {
+        hapticKey()
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             sinhalaBuffer.deleteCharAt(sinhalaBuffer.length - 1)
             updateComposingText()
@@ -496,6 +508,7 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun commitDirect(text: String) {
+        hapticKey()
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
         }
@@ -674,7 +687,10 @@ class KeyboardService : InputMethodService() {
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                 ).apply { marginEnd = 6 }
-                setOnClickListener { onPick(candidate) }
+                setOnClickListener {
+                    hapticKey()
+                    onPick(candidate)
+                }
             }
             row.addView(chip)
         }
@@ -729,6 +745,7 @@ class KeyboardService : InputMethodService() {
 
     private fun insertEmoji(emoji: String) {
         if (emoji.isEmpty()) return
+        hapticKey()
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
         }
@@ -804,6 +821,7 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun toggleShift() {
+        hapticKey()
         if (keyLayout != KeyLayout.LETTERS) return
         shiftOn = !shiftOn
         refreshKeyLabels()

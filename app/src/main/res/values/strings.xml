@@ -17,7 +17,8 @@
     <string name="key_abc">ABC</string>
     <string name="emoji_recent">Recent</string>
     <string name="tone_professional">Pro</string>
-    <string name="tone_friendly">Friendly</string>
+    <string name="haptic_title">Key press vibration</string>
+    <string name="haptic_summary">Short haptic tick on each key press</string>
     <string name="tone_title">English suggestion tone</string>
     <string name="tone_summary">Professional for work emails; Friendly for chats and messages</string>
     <string name="voice_listening">Listening…</string>

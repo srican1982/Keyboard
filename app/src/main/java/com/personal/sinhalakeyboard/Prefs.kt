@@ -12,6 +12,7 @@ object Prefs {
     private const val KEY_CONTINUOUS_VOICE = "continuous_voice"
     private const val KEY_ENGLISH_TONE = "english_tone"
     private const val KEY_RECENT_EMOJIS = "recent_emojis"
+    private const val KEY_HAPTIC = "haptic_feedback"
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -71,5 +72,12 @@ object Prefs {
         prefs(context).edit()
             .putString(KEY_RECENT_EMOJIS, current.take(32).joinToString("\u0001"))
             .apply()
+    }
+
+    fun isHapticEnabled(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_HAPTIC, true)
+
+    fun setHapticEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_HAPTIC, enabled).apply()
     }
 }

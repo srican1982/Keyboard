@@ -71,6 +71,20 @@
             android:textSize="13sp" />
 
         <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switchHaptic"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/haptic_title" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/haptic_summary"
+            android:textSize="13sp" />
+
+        <com.google.android.material.switchmaterial.SwitchMaterial
             android:id="@+id/switchCloudSuggestions"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

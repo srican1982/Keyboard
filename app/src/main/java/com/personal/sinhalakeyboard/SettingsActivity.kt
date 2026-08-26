@@ -41,6 +41,8 @@ class SettingsActivity : AppCompatActivity() {
 
         findViewById<SwitchMaterial>(R.id.switchAutoCorrect).isChecked =
             Prefs.isAutoCorrectOnSpace(this)
+        findViewById<SwitchMaterial>(R.id.switchHaptic).isChecked =
+            Prefs.isHapticEnabled(this)
         findViewById<SwitchMaterial>(R.id.switchCloudSuggestions).isChecked =
             Prefs.isCloudSuggestionsEnabled(this)
         findViewById<SwitchMaterial>(R.id.switchContinuousVoice).isChecked =
@@ -68,6 +70,10 @@ class SettingsActivity : AppCompatActivity() {
             Prefs.setAutoCorrectOnSpace(
                 this,
                 findViewById<SwitchMaterial>(R.id.switchAutoCorrect).isChecked,
+            )
+            Prefs.setHapticEnabled(
+                this,
+                findViewById<SwitchMaterial>(R.id.switchHaptic).isChecked,
             )
             Prefs.setCloudSuggestionsEnabled(
                 this,
