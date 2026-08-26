@@ -463,6 +463,12 @@ class KeyboardService : InputMethodService() {
     private fun onLetter(letter: String) {
         hapticKey()
         val ch = if (shiftOn) letter.uppercase() else letter
+        if (addWordMode) {
+            currentInputConnection?.commitText(ch, 1)
+            if (shiftOn) toggleShift()
+            updateAddWordSuggestions()
+            return
+        }
         if (language == Language.ENGLISH) {
             currentInputConnection?.commitText(ch, 1)
             if (shiftOn) toggleShift()
@@ -495,6 +501,17 @@ class KeyboardService : InputMethodService() {
 
     private fun onEnter() {
         hapticKey()
+        if (addWordMode) {
+            val ic = currentInputConnection ?: return
+            val word = getCurrentWord(ic).trim()
+            addWordMode = false
+            if (word.isNotEmpty()) saveWordFromAddMode(word)
+            sinhalaBuffer.clear()
+            clearComposingText()
+            ic.commitText("\n", 1)
+            clearSuggestions()
+            return
+        }
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
         }
@@ -511,6 +528,10 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun deleteOneCharacter() {
+        if (addWordMode) {
+            currentInputConnection?.deleteSurroundingText(1, 0)
+            return
+        }
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             sinhalaBuffer.deleteCharAt(sinhalaBuffer.length - 1)
             updateComposingText()
@@ -529,6 +550,10 @@ class KeyboardService : InputMethodService() {
             if (empty) {
                 addWordMode = false
                 clearSuggestions()
+                return
+            }
+            if (addWordMode) {
+                updateAddWordSuggestions()
                 return
             }
         }
@@ -667,29 +692,36 @@ class KeyboardService : InputMethodService() {
 
     private fun startAddWordMode() {
         addWordMode = true
-        when (language) {
-            Language.SINHALA -> {
-                if (sinhalaBuffer.isEmpty()) {
-                    clearComposingText()
-                    showAddWordHintRow()
-                    Toast.makeText(this, R.string.add_word_hint, Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(this, R.string.add_word_pick_hint, Toast.LENGTH_SHORT).show()
-                    updateComposingText()
-                    updateSinhalaSuggestions()
-                }
-            }
-            Language.ENGLISH -> {
-                val ic = currentInputConnection
-                val partial = ic?.let { getCurrentWord(it) }.orEmpty()
-                if (partial.isEmpty()) {
-                    showAddWordHintRow()
-                    Toast.makeText(this, R.string.add_word_hint, Toast.LENGTH_LONG).show()
-                } else {
-                    Toast.makeText(this, R.string.add_word_pick_hint, Toast.LENGTH_SHORT).show()
-                    updateEnglishSuggestions()
-                }
-            }
+        val ic = currentInputConnection
+        if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty() && ic != null) {
+            ic.commitText(sinhalaBuffer.toString(), 1)
+            sinhalaBuffer.clear()
+            clearComposingText()
+        }
+        val partial = ic?.let { getCurrentWord(it) }.orEmpty()
+        if (partial.isEmpty()) {
+            showAddWordHintRow()
+            Toast.makeText(this, R.string.add_word_hint, Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(this, R.string.add_word_pick_hint, Toast.LENGTH_SHORT).show()
+            updateAddWordSuggestions()
+        }
+    }
+
+    private fun updateAddWordSuggestions() {
+        val ic = currentInputConnection ?: return
+        val word = getCurrentWord(ic)
+        if (word.isEmpty()) {
+            showAddWordHintRow()
+            return
+        }
+        val items = typingMemory.customWordSuggestions(word, limit = 8)
+        renderSuggestions(items) { candidate ->
+            val liveWord = getCurrentWord(ic)
+            saveWordFromAddMode(liveWord)
+            addWordMode = false
+            replaceCurrentWord(ic, liveWord, candidate.commitText, trailingSpace = true)
+            clearSuggestions()
         }
     }
 
@@ -707,44 +739,25 @@ class KeyboardService : InputMethodService() {
 
     private fun finishAddWord() {
         addWordMode = false
-        when (language) {
-            Language.SINHALA -> finishAddWordSinhala()
-            Language.ENGLISH -> finishAddWordEnglish()
-        }
-    }
-
-    private fun finishAddWordSinhala() {
-        val roman = sinhalaBuffer.toString().trim()
-        if (roman.length < 2) {
-            sinhalaBuffer.clear()
-            clearComposingText()
-            clearSuggestions()
-            currentInputConnection?.commitText(" ", 1)
-            return
-        }
-        saveWordFromAddMode(roman)
-        val sinhala = singlishEngine.transliterate(roman)
-        commitSinhalaWord(sinhala, trailingSpace = true)
-        clearSuggestions()
-    }
-
-    private fun finishAddWordEnglish() {
         val ic = currentInputConnection ?: return
-        val roman = getCurrentWord(ic).trim()
-        if (roman.length < 2) {
+        val word = getCurrentWord(ic).trim()
+        sinhalaBuffer.clear()
+        clearComposingText()
+        if (word.isEmpty()) {
             clearSuggestions()
             ic.commitText(" ", 1)
             return
         }
-        saveWordFromAddMode(roman)
+        saveWordFromAddMode(word)
         ic.commitText(" ", 1)
+        clearSuggestions()
         updateNextWordSuggestions()
     }
 
-    private fun saveWordFromAddMode(roman: String) {
-        val key = roman.trim().lowercase()
-        if (key.length >= 2) {
-            typingMemory.saveCustomWord(key)
+    private fun saveWordFromAddMode(word: String) {
+        val trimmed = word.trim()
+        if (trimmed.isNotEmpty()) {
+            typingMemory.saveCustomWord(trimmed)
             Toast.makeText(this, R.string.word_saved, Toast.LENGTH_SHORT).show()
         }
     }
@@ -753,28 +766,27 @@ class KeyboardService : InputMethodService() {
         when {
             candidate.isAddWord -> startAddWordMode()
             addWordMode -> {
-                val roman = when (language) {
-                    Language.SINHALA -> sinhalaBuffer.toString().trim()
-                    Language.ENGLISH -> getCurrentWord(currentInputConnection ?: return).trim()
-                }
+                val ic = currentInputConnection ?: return
+                val typed = getCurrentWord(ic).trim()
                 addWordMode = false
-                saveWordFromAddMode(roman)
+                saveWordFromAddMode(typed)
                 when {
                     candidate.isSinglishRoman || candidate.isRoman -> {
-                        if (language == Language.SINHALA) {
+                        if (language == Language.SINHALA && !containsSinhalaScript(candidate.commitText)) {
                             commitSinglishRomanAsSinhala(candidate.commitText, trailingSpace = true)
                         } else {
-                            val ic = currentInputConnection ?: return
-                            replaceCurrentWord(ic, roman, candidate.commitText, trailingSpace = true)
+                            replaceCurrentWord(ic, typed, candidate.commitText, trailingSpace = true)
                         }
                     }
-                    language == Language.SINHALA -> {
-                        commitSinhalaWord(candidate.commitText, trailingSpace = true)
+                    language == Language.SINHALA && containsSinhalaScript(candidate.commitText) -> {
+                        ic.commitText("${candidate.commitText} ", 1)
+                        rememberWordCommitted(candidate.commitText)
+                        sinhalaBuffer.clear()
+                        clearComposingText()
                         clearSuggestions()
                     }
                     else -> {
-                        val ic = currentInputConnection ?: return
-                        replaceCurrentWord(ic, roman, candidate.commitText, trailingSpace = true)
+                        replaceCurrentWord(ic, typed, candidate.commitText, trailingSpace = true)
                         clearSuggestions()
                     }
                 }
@@ -1387,6 +1399,7 @@ class KeyboardService : InputMethodService() {
     }
 
     override fun onFinishInput() {
+        addWordMode = false
         sinhalaBuffer.clear()
         clearComposingText()
         clearSuggestions()
@@ -1401,4 +1414,7 @@ class KeyboardService : InputMethodService() {
         scope.cancel()
         super.onDestroy()
     }
+
+    private fun containsSinhalaScript(text: String): Boolean =
+        text.any { it.code in 0x0D80..0x0DFF }
 }
