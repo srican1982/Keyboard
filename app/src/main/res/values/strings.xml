@@ -16,6 +16,7 @@
     <string name="key_emoji">Emoji</string>
     <string name="key_abc">ABC</string>
     <string name="key_send">Send</string>
+    <string name="key_mic">Microphone</string>
     <string name="emoji_recent">Recent</string>
     <string name="tone_professional">Pro</string>
     <string name="tone_friendly">Friendly</string>
