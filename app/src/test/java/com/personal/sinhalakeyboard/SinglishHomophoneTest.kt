@@ -36,9 +36,9 @@ class SinglishHomophoneTest {
     @Test fun mahaprana_capitalLetters() {
         assertEquals("\u0D9B\u0DD3\u0DBB", c("Kiira")) // ඛීර (K = ඛ)
         assertEquals("\u0DB5\u0DBD\u0DBA", c("Palaya")) // ඵලය (P = ඵ)
-        assertEquals("\u0DB7\u0DCF\u0DC1\u0DCF\u0DC0", c("Baashaava")) // භාශාව (B = භ)
+        assertEquals("\u0DB7\u0DCF\u0DC1\u0DCF\u0DC0", c("Baashaava")) // Baa+shaava → භාශාව
         assertEquals("\u0DA1\u0DCF\u0DBA\u0DCF", c("Chaayaa")) // ඡායා (Ch = ඡ)
-        assertEquals("\u0DA3\u0DCF\u0DBA", c("Jhaana")) // ඣාන (J = ඣ)
+        assertEquals("\u0DA3\u0DCF\u0DB1", c("Jhaana")) // ඣාන (J = ඣ)
     }
 
     @Test fun mahaprana_lowercaseDigraphsStillWork() {

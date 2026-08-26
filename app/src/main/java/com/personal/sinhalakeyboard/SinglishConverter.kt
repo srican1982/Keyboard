@@ -68,6 +68,7 @@ object SinglishConverter {
         "Th" to "RETROFLEX_TH",
         "Dh" to "RETROFLEX_DH",
         "Ba" to "SANYAKA_BA",
+        "Baa" to "BH_AA",
         "K" to "KH",
         "G" to "GH",
         "P" to "PH",
@@ -219,6 +220,13 @@ object SinglishConverter {
             val special = specialMap[current]
             if (special != null) {
                 output.append(special)
+                i++
+                continue
+            }
+
+            if (current == "BH_AA") {
+                output.append(consonantMap.getValue("BH"))
+                    .append(vowelModifier.getValue("V_AA"))
                 i++
                 continue
             }
