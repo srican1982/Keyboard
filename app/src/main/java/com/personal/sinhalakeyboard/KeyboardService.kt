@@ -38,6 +38,7 @@ class KeyboardService : InputMethodService() {
     private val cloudSuggestionService = CloudSuggestionService()
     private val repeatHandler = Handler(Looper.getMainLooper())
     private var repeatRunnable: Runnable? = null
+    private var backspaceRepeating = false
 
     private lateinit var singlishEngine: SinglishEngine
     private lateinit var englishSuggestions: EnglishSuggestions
@@ -149,7 +150,20 @@ class KeyboardService : InputMethodService() {
         btnTonePro?.setOnClickListener { setEnglishTone(EnglishTone.PROFESSIONAL) }
         btnToneFriendly?.setOnClickListener { setEnglishTone(EnglishTone.FRIENDLY) }
 
-        setupRepeatKey(view.findViewById(R.id.keyBackspace)) { onBackspace() }
+        setupRepeatKey(
+            view.findViewById(R.id.keyBackspace),
+            onInitial = { onBackspaceTap() },
+            onRepeat = {
+                backspaceRepeating = true
+                deleteOneCharacter()
+            },
+            onRelease = {
+                if (backspaceRepeating) {
+                    backspaceRepeating = false
+                    refreshAfterBackspace()
+                }
+            },
+        )
         view.findViewById<TextView>(R.id.keySpace).setOnClickListener { onSpace() }
         view.findViewById<ImageView>(R.id.keyEnter).setOnClickListener { onEnter() }
 
@@ -388,16 +402,22 @@ class KeyboardService : InputMethodService() {
         applyKeyLayout()
     }
 
-    private fun setupRepeatKey(view: View, action: () -> Unit) {
+    private fun setupRepeatKey(
+        view: View,
+        onInitial: () -> Unit,
+        onRepeat: () -> Unit = onInitial,
+        onRelease: () -> Unit = {},
+    ) {
         view.setOnTouchListener { _, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    action()
-                    startRepeat(action)
+                    onInitial()
+                    startRepeat(onRepeat)
                     true
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     stopRepeat()
+                    onRelease()
                     true
                 }
                 else -> false
@@ -407,15 +427,15 @@ class KeyboardService : InputMethodService() {
 
     private fun startRepeat(action: () -> Unit) {
         stopRepeat()
-        var delay = 400L
+        var delay = 60L
         repeatRunnable = object : Runnable {
             override fun run() {
                 action()
-                delay = (delay * 0.85).toLong().coerceAtLeast(40L)
+                delay = (delay * 0.72).toLong().coerceAtLeast(22L)
                 repeatHandler.postDelayed(this, delay)
             }
         }
-        repeatHandler.postDelayed(repeatRunnable!!, 400L)
+        repeatHandler.postDelayed(repeatRunnable!!, 220L)
     }
 
     private fun stopRepeat() {
@@ -465,22 +485,36 @@ class KeyboardService : InputMethodService() {
         clearSuggestions()
     }
 
-    private fun onBackspace() {
+    private fun onBackspaceTap() {
         hapticKey()
+        deleteOneCharacter()
+        if (!backspaceRepeating) {
+            refreshAfterBackspace()
+        }
+    }
+
+    private fun deleteOneCharacter() {
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             sinhalaBuffer.deleteCharAt(sinhalaBuffer.length - 1)
             updateComposingText()
-            updateSinhalaSuggestions()
             return
         }
         currentInputConnection?.deleteSurroundingText(1, 0)
-        val ic = currentInputConnection ?: return
-        if (language == Language.ENGLISH) {
-            if (getCurrentWord(ic).isEmpty()) updateNextWordSuggestions()
-            else updateEnglishSuggestions()
-        } else if (sinhalaBuffer.isEmpty() && getCurrentWord(ic).isEmpty()) {
-            updateNextWordSuggestions()
+    }
+
+    private fun refreshAfterBackspace() {
+        if (language == Language.SINHALA) {
+            if (sinhalaBuffer.isNotEmpty()) {
+                updateSinhalaSuggestions()
+            } else {
+                val ic = currentInputConnection ?: return
+                if (getCurrentWord(ic).isEmpty()) updateNextWordSuggestions()
+            }
+            return
         }
+        val ic = currentInputConnection ?: return
+        if (getCurrentWord(ic).isEmpty()) updateNextWordSuggestions()
+        else updateEnglishSuggestions()
     }
 
     private fun commitSinhalaWord(sinhala: String? = null) {
