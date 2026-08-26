@@ -621,7 +621,11 @@ class KeyboardService : InputMethodService() {
     private fun updateSinhalaSuggestions() {
         if (sinhalaBuffer.isEmpty()) {
             sinhalaSuggestionJob?.cancel()
-            clearSuggestions()
+            if (addWordMode) {
+                showAddWordHintRow()
+            } else {
+                clearSuggestions()
+            }
             return
         }
         val typed = sinhalaBuffer.toString()
@@ -649,10 +653,27 @@ class KeyboardService : InputMethodService() {
 
     private fun startAddWordMode() {
         addWordMode = true
-        sinhalaBuffer.clear()
-        clearComposingText()
-        clearSuggestions()
-        Toast.makeText(this, R.string.add_word_hint, Toast.LENGTH_LONG).show()
+        if (sinhalaBuffer.isEmpty()) {
+            clearComposingText()
+            showAddWordHintRow()
+            Toast.makeText(this, R.string.add_word_hint, Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(this, R.string.add_word_pick_hint, Toast.LENGTH_SHORT).show()
+            updateComposingText()
+            updateSinhalaSuggestions()
+        }
+    }
+
+    private fun showAddWordHintRow() {
+        renderSuggestions(
+            listOf(
+                SuggestionCandidate(
+                    display = getString(R.string.add_word_mode_active),
+                    commitText = "",
+                    isAction = true,
+                ),
+            ),
+        ) { /* hint chip — tap does nothing */ }
     }
 
     private fun finishAddWord() {

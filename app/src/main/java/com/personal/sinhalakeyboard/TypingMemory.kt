@@ -77,7 +77,11 @@ class TypingMemory(context: Context) {
         if (key.isEmpty()) return emptyList()
         return sinhalaByRoman.entries
             .filter { it.key.startsWith(key) }
-            .sortedWith(compareByDescending<Map.Entry<String, Entry>> { it.value.count }.thenBy { it.key })
+            .sortedWith(
+                compareByDescending<Map.Entry<String, Entry>> { if (it.key == key) 1 else 0 }
+                    .thenByDescending { it.value.count }
+                    .thenBy { it.key },
+            )
             .take(limit)
             .map { (romanKey, entry) ->
                 val singlishRoman = !containsSinhalaScript(entry.value)

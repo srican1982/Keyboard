@@ -22,7 +22,9 @@
     <string name="translating_singlish">Translating Singlish to English…</string>
     <string name="translate_error">Singlish translation failed</string>
     <string name="suggestion_add_word">+ Add word</string>
-    <string name="add_word_hint">Type the word to save, then press space or pick a suggestion</string>
+    <string name="add_word_hint">Singlish mode: type the word, press space or tap a suggestion to save it</string>
+    <string name="add_word_pick_hint">Pick the spelling you want to save, or press space</string>
+    <string name="add_word_mode_active">Saving word… type Singlish, then space</string>
     <string name="word_saved">Word saved — it will appear in suggestions next time</string>
     <string name="emoji_recent">Recent</string>
     <string name="tone_professional">Pro</string>

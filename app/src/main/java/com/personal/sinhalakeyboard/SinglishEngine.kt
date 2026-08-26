@@ -63,7 +63,7 @@ class SinglishEngine(
         }
 
         // Layer 0: words you typed before (personal history)
-        typingMemory?.sinhalaSuggestions(p, limit = 3)?.forEach { results.add(it) }
+        typingMemory?.sinhalaSuggestions(p, limit = 5)?.forEach { results.add(it) }
 
         // Layer 1: live conversion + phonetic ambiguities (කො/කෝ for ko) — always before dictionary
         val ruleOutput = SinglishConverter.convert(p)
