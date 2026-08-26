@@ -25,12 +25,15 @@ class KeyboardService : InputMethodService() {
 
     enum class Language { SINHALA, ENGLISH }
 
+    enum class KeyLayout { LETTERS, NUMBERS, SYMBOLS }
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val grammarFixer = GrammarFixer()
     private val repeatHandler = Handler(Looper.getMainLooper())
     private var repeatRunnable: Runnable? = null
 
     private lateinit var singlishEngine: SinglishEngine
+    private lateinit var englishSuggestions: EnglishSuggestions
 
     private var keyboardView: View? = null
     private var suggestionRow: LinearLayout? = null
@@ -39,9 +42,11 @@ class KeyboardService : InputMethodService() {
     private var progress: ProgressBar? = null
 
     private var language = Language.SINHALA
+    private var keyLayout = KeyLayout.LETTERS
     private var shiftOn = false
     private var sinhalaBuffer = StringBuilder()
     private var fixJob: Job? = null
+    private var sinhalaSuggestionJob: Job? = null
 
     private var activeTheme = KeyboardTheme.WHITE
     private var keyTextColor = 0xFF212121.toInt()
@@ -50,18 +55,36 @@ class KeyboardService : InputMethodService() {
     private var romanSuggestionColor = 0xFF616161.toInt()
     private var suggestionChipBg = R.drawable.suggestion_chip_light
 
-    private val allKeyIds = listOf(
+    private val letterKeyIds = listOf(
         R.id.keyQ, R.id.keyW, R.id.keyE, R.id.keyR, R.id.keyT, R.id.keyY, R.id.keyU,
         R.id.keyI, R.id.keyO, R.id.keyP, R.id.keyA, R.id.keyS, R.id.keyD, R.id.keyF,
         R.id.keyG, R.id.keyH, R.id.keyJ, R.id.keyK, R.id.keyL, R.id.keyZ, R.id.keyX,
-        R.id.keyC, R.id.keyV, R.id.keyB, R.id.keyN, R.id.keyM, R.id.keyShift,
-        R.id.keyBackspace, R.id.keyNumbers, R.id.keyComma, R.id.keySpace, R.id.keyPeriod,
-        R.id.keyEnter,
+        R.id.keyC, R.id.keyV, R.id.keyB, R.id.keyN, R.id.keyM,
+    )
+
+    private val lettersLower = listOf(
+        "q", "w", "e", "r", "t", "y", "u", "i", "o", "p",
+        "a", "s", "d", "f", "g", "h", "j", "k", "l",
+        "z", "x", "c", "v", "b", "n", "m",
+    )
+
+    private val numbersRow1 = listOf("1", "2", "3", "4", "5", "6", "7", "8", "9", "0")
+    private val numbersRow2 = listOf("-", "/", ":", ";", "(", ")", "$", "&", "@", "\"")
+    private val numbersRow3Keys = listOf(".", ",", "?", "!", "'", "•", "@")
+
+    private val symbolsRow1 = listOf("[", "]", "{", "}", "#", "%", "^", "*", "+", "=")
+    private val symbolsRow2 = listOf("_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•")
+    private val symbolsRow3Keys = listOf(".", ",", "?", "!", "'", "•", "@")
+
+    private val themedKeyIds = letterKeyIds + listOf(
+        R.id.keyShift, R.id.keyBackspace, R.id.keyNumbers, R.id.keyComma,
+        R.id.keySpace, R.id.keyPeriod, R.id.keyEnter,
     )
 
     override fun onCreate() {
         super.onCreate()
         singlishEngine = SinglishEngine(this)
+        englishSuggestions = EnglishSuggestions(this)
     }
 
     override fun onCreateInputView(): View {
@@ -72,46 +95,14 @@ class KeyboardService : InputMethodService() {
         btnFix = view.findViewById(R.id.btnFix)
         progress = view.findViewById(R.id.progress)
 
-        setupKey(view, R.id.keyQ, "q")
-        setupKey(view, R.id.keyW, "w")
-        setupKey(view, R.id.keyE, "e")
-        setupKey(view, R.id.keyR, "r")
-        setupKey(view, R.id.keyT, "t")
-        setupKey(view, R.id.keyY, "y")
-        setupKey(view, R.id.keyU, "u")
-        setupKey(view, R.id.keyI, "i")
-        setupKey(view, R.id.keyO, "o")
-        setupKey(view, R.id.keyP, "p")
-        setupKey(view, R.id.keyA, "a")
-        setupKey(view, R.id.keyS, "s")
-        setupKey(view, R.id.keyD, "d")
-        setupKey(view, R.id.keyF, "f")
-        setupKey(view, R.id.keyG, "g")
-        setupKey(view, R.id.keyH, "h")
-        setupKey(view, R.id.keyJ, "j")
-        setupKey(view, R.id.keyK, "k")
-        setupKey(view, R.id.keyL, "l")
-        setupKey(view, R.id.keyZ, "z")
-        setupKey(view, R.id.keyX, "x")
-        setupKey(view, R.id.keyC, "c")
-        setupKey(view, R.id.keyV, "v")
-        setupKey(view, R.id.keyB, "b")
-        setupKey(view, R.id.keyN, "n")
-        setupKey(view, R.id.keyM, "m")
-
-        view.findViewById<TextView>(R.id.keyShift).setOnClickListener { toggleShift() }
         setupRepeatKey(view.findViewById(R.id.keyBackspace)) { onBackspace() }
         view.findViewById<TextView>(R.id.keySpace).setOnClickListener { onSpace() }
         view.findViewById<TextView>(R.id.keyEnter).setOnClickListener { onEnter() }
-        view.findViewById<TextView>(R.id.keyComma).setOnClickListener { commitDirect(",") }
-        view.findViewById<TextView>(R.id.keyPeriod).setOnClickListener { commitDirect(".") }
-        view.findViewById<TextView>(R.id.keyNumbers).setOnClickListener {
-            Toast.makeText(this, "Numbers row coming soon", Toast.LENGTH_SHORT).show()
-        }
 
         btnLang?.setOnClickListener { toggleLanguage() }
         btnFix?.setOnClickListener { fixGrammar() }
 
+        applyKeyLayout()
         applyTheme()
         updateLanguageUi()
         return view
@@ -149,7 +140,7 @@ class KeyboardService : InputMethodService() {
             }
         }
 
-        for (id in allKeyIds) {
+        for (id in themedKeyIds) {
             view.findViewById<TextView>(id).apply {
                 setBackgroundResource(keyBg)
                 setTextColor(if (id == R.id.keySpace) keyMutedColor else keyTextColor)
@@ -166,8 +157,124 @@ class KeyboardService : InputMethodService() {
         }
     }
 
-    private fun setupKey(view: View, id: Int, letter: String) {
-        view.findViewById<TextView>(id).setOnClickListener { onLetter(letter) }
+    private fun applyKeyLayout() {
+        val view = keyboardView ?: return
+        shiftOn = false
+
+        when (keyLayout) {
+            KeyLayout.LETTERS -> bindLettersLayout(view)
+            KeyLayout.NUMBERS -> bindNumbersLayout(view)
+            KeyLayout.SYMBOLS -> bindSymbolsLayout(view)
+        }
+    }
+
+    private fun bindLettersLayout(view: View) {
+        letterKeyIds.forEachIndexed { index, id ->
+            val letter = lettersLower[index]
+            view.findViewById<TextView>(id).apply {
+                text = letter
+                setOnClickListener { onLetter(letter) }
+            }
+        }
+        view.findViewById<TextView>(R.id.keyShift).apply {
+            text = "⇧"
+            setOnClickListener { toggleShift() }
+        }
+        view.findViewById<TextView>(R.id.keyNumbers).apply {
+            text = "123"
+            setOnClickListener { showNumbersLayout() }
+        }
+        view.findViewById<TextView>(R.id.keyComma).apply {
+            text = ","
+            setOnClickListener { commitDirect(",") }
+        }
+        view.findViewById<TextView>(R.id.keyPeriod).apply {
+            text = "."
+            setOnClickListener { commitDirect(".") }
+        }
+    }
+
+    private fun bindNumbersLayout(view: View) {
+        bindSymbolRows(view, numbersRow1, numbersRow2, numbersRow3Keys)
+        view.findViewById<TextView>(R.id.keyShift).apply {
+            text = "#+="
+            setOnClickListener { showSymbolsLayout() }
+        }
+        view.findViewById<TextView>(R.id.keyNumbers).apply {
+            text = "ABC"
+            setOnClickListener { showLettersLayout() }
+        }
+        view.findViewById<TextView>(R.id.keyComma).apply {
+            text = ","
+            setOnClickListener { commitDirect(",") }
+        }
+        view.findViewById<TextView>(R.id.keyPeriod).apply {
+            text = "."
+            setOnClickListener { commitDirect(".") }
+        }
+    }
+
+    private fun bindSymbolsLayout(view: View) {
+        bindSymbolRows(view, symbolsRow1, symbolsRow2, symbolsRow3Keys)
+        view.findViewById<TextView>(R.id.keyShift).apply {
+            text = "123"
+            setOnClickListener { showNumbersLayout() }
+        }
+        view.findViewById<TextView>(R.id.keyNumbers).apply {
+            text = "ABC"
+            setOnClickListener { showLettersLayout() }
+        }
+        view.findViewById<TextView>(R.id.keyComma).apply {
+            text = ","
+            setOnClickListener { commitDirect(",") }
+        }
+        view.findViewById<TextView>(R.id.keyPeriod).apply {
+            text = "."
+            setOnClickListener { commitDirect(".") }
+        }
+    }
+
+    private fun bindSymbolRows(
+        view: View,
+        row1: List<String>,
+        row2: List<String>,
+        row3: List<String>,
+    ) {
+        letterKeyIds.forEachIndexed { index, id ->
+            val label = when {
+                index < row1.size -> row1[index]
+                index < row1.size + row2.size -> row2[index - row1.size]
+                else -> row3.getOrElse(index - row1.size - row2.size) { "" }
+            }
+            view.findViewById<TextView>(id).apply {
+                text = label
+                if (label.isEmpty()) {
+                    setOnClickListener(null)
+                    isClickable = false
+                } else {
+                    isClickable = true
+                    setOnClickListener { commitDirect(label) }
+                }
+            }
+        }
+    }
+
+    private fun showLettersLayout() {
+        if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
+        keyLayout = KeyLayout.LETTERS
+        applyKeyLayout()
+    }
+
+    private fun showNumbersLayout() {
+        if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
+        keyLayout = KeyLayout.NUMBERS
+        applyKeyLayout()
+    }
+
+    private fun showSymbolsLayout() {
+        if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
+        keyLayout = KeyLayout.SYMBOLS
+        applyKeyLayout()
     }
 
     private fun setupRepeatKey(view: View, action: () -> Unit) {
@@ -271,12 +378,15 @@ class KeyboardService : InputMethodService() {
 
     private fun updateComposingText() {
         val ic = currentInputConnection ?: return
+        ic.beginBatchEdit()
         if (sinhalaBuffer.isEmpty()) {
             ic.setComposingText("", 0)
-            return
+        } else {
+            val sinhala = singlishEngine.transliterateLive(sinhalaBuffer.toString())
+            // Cursor at end of composing text (1 = after first char only — caused freeze)
+            ic.setComposingText(sinhala, sinhala.length)
         }
-        val sinhala = singlishEngine.transliterateLive(sinhalaBuffer.toString())
-        ic.setComposingText(sinhala, 1)
+        ic.endBatchEdit()
     }
 
     private fun clearComposingText() {
@@ -285,15 +395,23 @@ class KeyboardService : InputMethodService() {
 
     private fun updateSinhalaSuggestions() {
         if (sinhalaBuffer.isEmpty()) {
+            sinhalaSuggestionJob?.cancel()
             clearSuggestions()
             return
         }
-        val items = singlishEngine.suggestions(sinhalaBuffer.toString())
-        renderSuggestions(items) { candidate ->
-            if (candidate.isRoman) {
-                commitRomanWord(candidate.commitText)
-            } else {
-                commitSinhalaWord(candidate.commitText)
+        val typed = sinhalaBuffer.toString()
+        sinhalaSuggestionJob?.cancel()
+        sinhalaSuggestionJob = scope.launch {
+            val items = withContext(Dispatchers.Default) {
+                singlishEngine.suggestions(typed)
+            }
+            if (sinhalaBuffer.toString() != typed) return@launch
+            renderSuggestions(items) { candidate ->
+                if (candidate.isRoman) {
+                    commitRomanWord(candidate.commitText)
+                } else {
+                    commitSinhalaWord(candidate.commitText)
+                }
             }
         }
     }
@@ -305,7 +423,7 @@ class KeyboardService : InputMethodService() {
             clearSuggestions()
             return
         }
-        val items = EnglishSuggestions.suggest(word)
+        val items = englishSuggestions.suggest(word)
         renderSuggestions(items) { candidate ->
             replaceCurrentWord(ic, word, candidate.commitText)
         }
@@ -339,8 +457,9 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun getCurrentWord(ic: InputConnection): String {
-        val before = ic.getTextBeforeCursor(100, 0)?.toString().orEmpty()
-        return before.takeLastWhile { !it.isWhitespace() }
+        val before = ic.getTextBeforeCursor(1000, 0)?.toString().orEmpty()
+        val raw = before.takeLastWhile { !it.isWhitespace() && it != '\n' }
+        return raw.trimEnd { !it.isLetter() && it != '\'' }
     }
 
     private fun replaceCurrentWord(ic: InputConnection, oldWord: String, newWord: String) {
@@ -348,29 +467,26 @@ class KeyboardService : InputMethodService() {
             ic.commitText(newWord, 1)
             return
         }
-        ic.deleteSurroundingText(oldWord.length, 0)
+        val before = ic.getTextBeforeCursor(oldWord.length + 5, 0)?.toString().orEmpty()
+        val toDelete = before.takeLastWhile { !it.isWhitespace() && it != '\n' }
+        ic.deleteSurroundingText(toDelete.length, 0)
         ic.commitText(newWord, 1)
         updateEnglishSuggestions()
     }
 
     private fun toggleShift() {
+        if (keyLayout != KeyLayout.LETTERS) return
         shiftOn = !shiftOn
         refreshKeyLabels()
     }
 
     private fun refreshKeyLabels() {
         val view = keyboardView ?: return
-        val letters = listOf(
-            R.id.keyQ to "q", R.id.keyW to "w", R.id.keyE to "e", R.id.keyR to "r",
-            R.id.keyT to "t", R.id.keyY to "y", R.id.keyU to "u", R.id.keyI to "i",
-            R.id.keyO to "o", R.id.keyP to "p", R.id.keyA to "a", R.id.keyS to "s",
-            R.id.keyD to "d", R.id.keyF to "f", R.id.keyG to "g", R.id.keyH to "h",
-            R.id.keyJ to "j", R.id.keyK to "k", R.id.keyL to "l", R.id.keyZ to "z",
-            R.id.keyX to "x", R.id.keyC to "c", R.id.keyV to "v", R.id.keyB to "b",
-            R.id.keyN to "n", R.id.keyM to "m",
-        )
-        for ((id, letter) in letters) {
-            view.findViewById<TextView>(id).text = if (shiftOn) letter.uppercase() else letter
+        if (keyLayout != KeyLayout.LETTERS) return
+        letterKeyIds.forEachIndexed { index, id ->
+            val letter = lettersLower[index]
+            view.findViewById<TextView>(id).text =
+                if (shiftOn) letter.uppercase() else letter
         }
     }
 
@@ -454,12 +570,44 @@ class KeyboardService : InputMethodService() {
         ic.endBatchEdit()
     }
 
+    override fun onUpdateSelection(
+        oldSelStart: Int,
+        oldSelEnd: Int,
+        newSelStart: Int,
+        newSelEnd: Int,
+        candidatesStart: Int,
+        candidatesEnd: Int,
+    ) {
+        super.onUpdateSelection(
+            oldSelStart, oldSelEnd, newSelStart, newSelEnd,
+            candidatesStart, candidatesEnd,
+        )
+        if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
+            if (candidatesStart < 0 || candidatesEnd < 0) {
+                sinhalaBuffer.clear()
+                clearSuggestions()
+            }
+        }
+        if (language == Language.ENGLISH && newSelStart == newSelEnd) {
+            updateEnglishSuggestions()
+        }
+    }
+
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
         sinhalaBuffer.clear()
         clearComposingText()
         clearSuggestions()
+        keyLayout = KeyLayout.LETTERS
+        applyKeyLayout()
         applyTheme()
+    }
+
+    override fun onFinishInput() {
+        sinhalaBuffer.clear()
+        clearComposingText()
+        clearSuggestions()
+        super.onFinishInput()
     }
 
     override fun onDestroy() {

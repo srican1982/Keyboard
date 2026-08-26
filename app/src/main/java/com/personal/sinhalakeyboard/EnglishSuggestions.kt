@@ -1,62 +1,71 @@
 package com.personal.sinhalakeyboard
 
-object EnglishSuggestions {
+import android.content.Context
 
-    private val words = listOf(
-        "the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for",
-        "not", "on", "with", "he", "as", "you", "do", "at", "this", "but", "his",
-        "by", "from", "they", "we", "say", "her", "she", "or", "an", "will", "my",
-        "one", "all", "would", "there", "their", "what", "so", "up", "out", "if",
-        "about", "who", "get", "which", "go", "me", "when", "make", "can", "like",
-        "time", "no", "just", "him", "know", "take", "people", "into", "year",
-        "your", "good", "some", "could", "them", "see", "other", "than", "then",
-        "now", "look", "only", "come", "its", "over", "think", "also", "back",
-        "after", "use", "two", "how", "our", "work", "first", "well", "way",
-        "even", "new", "want", "because", "any", "these", "give", "day", "most",
-        "us", "hello", "hi", "hey", "thanks", "thank", "please", "sorry", "yes",
-        "okay", "ok", "great", "nice", "love", "happy", "help", "need", "want",
-        "going", "doing", "been", "being", "had", "has", "did", "was", "were",
-        "are", "is", "am", "been", "very", "much", "more", "still", "here",
-        "where", "why", "today", "tomorrow", "yesterday", "morning", "night",
-        "friend", "family", "home", "house", "phone", "message", "text", "call",
-        "email", "school", "office", "work", "job", "money", "food", "water",
-        "please", "welcome", "beautiful", "awesome", "perfect", "right", "wrong",
-        "true", "false", "maybe", "sure", "really", "actually", "always", "never",
-        "sometimes", "already", "again", "another", "something", "nothing",
-        "everything", "someone", "anyone", "everyone", "nothing", "world",
-        "country", "city", "street", "name", "number", "question", "answer",
-        "problem", "solution", "idea", "plan", "start", "stop", "finish", "wait",
-        "tell", "ask", "talk", "speak", "listen", "read", "write", "learn",
-        "teach", "play", "run", "walk", "drive", "eat", "drink", "sleep",
-        "wake", "buy", "sell", "pay", "send", "receive", "open", "close",
-        "find", "lose", "keep", "leave", "stay", "move", "change", "try",
-        "hope", "wish", "feel", "believe", "remember", "forget", "understand",
-        "explain", "mean", "matter", "important", "different", "same", "best",
-        "better", "worse", "bad", "big", "small", "long", "short", "high",
-        "low", "old", "young", "hot", "cold", "fast", "slow", "easy", "hard",
-        "free", "busy", "ready", "late", "early", "soon", "later", "before",
-        "during", "while", "until", "since", "between", "through", "across",
-        "around", "near", "far", "inside", "outside", "above", "below",
-        "together", "alone", "maybe", "probably", "definitely", "certainly",
-    )
+class EnglishSuggestions(context: Context) {
 
-    fun suggest(prefix: String, limit: Int = 6): List<SuggestionCandidate> {
+    private val words: List<String>
+
+    init {
+        words = loadWords(context)
+    }
+
+    private fun loadWords(context: Context): List<String> {
+        return try {
+            context.assets.open("english_words.txt").bufferedReader().useLines { lines ->
+                lines.map { it.trim().lowercase() }
+                    .filter { it.length in 2..12 && it.all { c -> c.isLetter() } }
+                    .distinct()
+                    .sorted()
+                    .take(25_000)
+                    .toList()
+            }
+        } catch (_: Exception) {
+            FALLBACK_WORDS
+        }
+    }
+
+    fun suggest(prefix: String, limit: Int = 8): List<SuggestionCandidate> {
         val p = prefix.trim()
         if (p.isEmpty()) return emptyList()
 
         val lower = p.lowercase()
         val results = linkedSetOf<SuggestionCandidate>()
 
-        words.filter { it.startsWith(lower) && it != lower }
-            .sortedWith(compareBy<String> { it.length }.thenBy { it })
-            .take(limit)
-            .forEach { word ->
+        // Binary search for prefix range in sorted word list
+        val start = words.binarySearch(lower).let { idx ->
+            if (idx >= 0) idx else -(idx + 1)
+        }
+        var count = 0
+        for (i in start until words.size) {
+            val word = words[i]
+            if (!word.startsWith(lower)) break
+            if (word != lower) {
                 val display = word.replaceFirstChar { c ->
                     if (p[0].isUpperCase()) c.uppercaseChar() else c
                 }
                 results.add(SuggestionCandidate(display, display))
+                count++
+                if (count >= limit) break
             }
+        }
 
         return results.toList()
+    }
+
+    companion object {
+        private val FALLBACK_WORDS = listOf(
+            "the", "be", "to", "of", "and", "a", "in", "that", "have", "i", "it", "for",
+            "not", "on", "with", "he", "as", "you", "do", "at", "this", "but", "his",
+            "by", "from", "they", "we", "say", "her", "she", "or", "an", "will", "my",
+            "one", "all", "would", "there", "their", "what", "so", "up", "out", "if",
+            "about", "who", "get", "which", "go", "me", "when", "make", "can", "like",
+            "time", "no", "just", "him", "know", "take", "people", "into", "year",
+            "your", "good", "some", "could", "them", "see", "other", "than", "then",
+            "now", "look", "only", "come", "its", "over", "think", "also", "back",
+            "hello", "thanks", "please", "sorry", "yes", "okay", "great", "really",
+            "because", "something", "everything", "nothing", "someone", "anyone",
+            "message", "tomorrow", "yesterday", "morning", "beautiful", "important",
+        )
     }
 }
