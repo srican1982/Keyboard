@@ -29,13 +29,19 @@ class GrammarFixer {
         try {
             val body = JSONObject().apply {
                 put("model", MODEL)
+                put("max_tokens", 4096)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "system")
                         put(
                             "content",
-                            "You are a grammar and spelling corrector. Fix only grammar, spelling, and punctuation. " +
-                                "Keep the meaning and tone. Return ONLY the corrected text with no explanation."
+                            "You are an expert English writing assistant. The user sends a complete message " +
+                                "that may contain multiple sentences, grammar errors, typos, or unclear phrasing. " +
+                                "Read the ENTIRE message as one unified piece — understand what they mean to say, " +
+                                "then rewrite it with correct grammar, spelling, and punctuation. Improve clarity " +
+                                "and flow where helpful, but keep the same meaning, intent, and tone. " +
+                                "Do NOT fix sentences one-by-one in isolation. " +
+                                "Return ONLY the improved text — no explanations, quotes, or labels."
                         )
                     })
                     put(JSONObject().apply {

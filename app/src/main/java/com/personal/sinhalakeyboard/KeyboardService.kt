@@ -7,6 +7,7 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -41,6 +42,22 @@ class KeyboardService : InputMethodService() {
     private var shiftOn = false
     private var sinhalaBuffer = StringBuilder()
     private var fixJob: Job? = null
+
+    private var activeTheme = KeyboardTheme.WHITE
+    private var keyTextColor = 0xFF212121.toInt()
+    private var keyMutedColor = 0xFF616161.toInt()
+    private var sinhalaSuggestionColor = 0xFF1B5E20.toInt()
+    private var romanSuggestionColor = 0xFF616161.toInt()
+    private var suggestionChipBg = R.drawable.suggestion_chip_light
+
+    private val allKeyIds = listOf(
+        R.id.keyQ, R.id.keyW, R.id.keyE, R.id.keyR, R.id.keyT, R.id.keyY, R.id.keyU,
+        R.id.keyI, R.id.keyO, R.id.keyP, R.id.keyA, R.id.keyS, R.id.keyD, R.id.keyF,
+        R.id.keyG, R.id.keyH, R.id.keyJ, R.id.keyK, R.id.keyL, R.id.keyZ, R.id.keyX,
+        R.id.keyC, R.id.keyV, R.id.keyB, R.id.keyN, R.id.keyM, R.id.keyShift,
+        R.id.keyBackspace, R.id.keyNumbers, R.id.keyComma, R.id.keySpace, R.id.keyPeriod,
+        R.id.keyEnter,
+    )
 
     override fun onCreate() {
         super.onCreate()
@@ -95,8 +112,58 @@ class KeyboardService : InputMethodService() {
         btnLang?.setOnClickListener { toggleLanguage() }
         btnFix?.setOnClickListener { fixGrammar() }
 
+        applyTheme()
         updateLanguageUi()
         return view
+    }
+
+    private fun applyTheme() {
+        activeTheme = Prefs.getTheme(this)
+        val view = keyboardView ?: return
+
+        val keyBg: Int
+        val btnLangBg: Int
+        val btnFixBg: Int
+        when (activeTheme) {
+            KeyboardTheme.WHITE -> {
+                view.findViewById<View>(R.id.keyboardRoot).setBackgroundColor(0xFFECEFF1.toInt())
+                keyBg = R.drawable.key_bg_light
+                keyTextColor = 0xFF212121.toInt()
+                keyMutedColor = 0xFF616161.toInt()
+                btnLangBg = R.drawable.btn_3d_light
+                btnFixBg = R.drawable.btn_3d_fix_light
+                suggestionChipBg = R.drawable.suggestion_chip_light
+                sinhalaSuggestionColor = 0xFF1B5E20.toInt()
+                romanSuggestionColor = 0xFF616161.toInt()
+            }
+            KeyboardTheme.BLACK -> {
+                view.findViewById<View>(R.id.keyboardRoot).setBackgroundColor(0xFF121212.toInt())
+                keyBg = R.drawable.key_bg_dark
+                keyTextColor = 0xFFFFFFFF.toInt()
+                keyMutedColor = 0xFFB0BEC5.toInt()
+                btnLangBg = R.drawable.btn_3d_dark
+                btnFixBg = R.drawable.btn_3d_fix_dark
+                suggestionChipBg = R.drawable.suggestion_chip_dark
+                sinhalaSuggestionColor = 0xFF81C784.toInt()
+                romanSuggestionColor = 0xFFB0BEC5.toInt()
+            }
+        }
+
+        for (id in allKeyIds) {
+            view.findViewById<TextView>(id).apply {
+                setBackgroundResource(keyBg)
+                setTextColor(if (id == R.id.keySpace) keyMutedColor else keyTextColor)
+            }
+        }
+
+        btnLang?.apply {
+            setBackgroundResource(btnLangBg)
+            setTextColor(0xFFFFFFFF.toInt())
+        }
+        btnFix?.apply {
+            setBackgroundResource(btnFixBg)
+            setTextColor(0xFFFFFFFF.toInt())
+        }
     }
 
     private fun setupKey(view: View, id: Int, letter: String) {
@@ -254,9 +321,9 @@ class KeyboardService : InputMethodService() {
             val chip = TextView(this).apply {
                 text = candidate.display
                 textSize = 16f
-                setTextColor(if (candidate.isRoman) 0xFF616161.toInt() else 0xFF1B5E20.toInt())
+                setTextColor(if (candidate.isRoman) romanSuggestionColor else sinhalaSuggestionColor)
                 setPadding(24, 12, 24, 12)
-                setBackgroundResource(R.drawable.suggestion_chip_bg)
+                setBackgroundResource(suggestionChipBg)
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -344,6 +411,8 @@ class KeyboardService : InputMethodService() {
                 return@launch
             }
 
+            Toast.makeText(this@KeyboardService, R.string.fixing_grammar, Toast.LENGTH_SHORT).show()
+
             val result = grammarFixer.fixGrammar(text, apiKey)
             progress?.visibility = View.GONE
             btnFix?.isEnabled = true
@@ -357,14 +426,28 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun getFieldText(ic: InputConnection): String {
-        val before = ic.getTextBeforeCursor(5000, 0)?.toString().orEmpty()
-        val after = ic.getTextAfterCursor(5000, 0)?.toString().orEmpty()
+        val extracted = ic.getExtractedText(ExtractedTextRequest(), 0)
+        if (extracted?.text != null) {
+            val full = extracted.text.toString().trim()
+            if (full.isNotEmpty()) return full
+        }
+        val before = ic.getTextBeforeCursor(10000, 0)?.toString().orEmpty()
+        val after = ic.getTextAfterCursor(10000, 0)?.toString().orEmpty()
         return (before + after).trim()
     }
 
     private fun replaceFieldText(ic: InputConnection, newText: String) {
-        val before = ic.getTextBeforeCursor(5000, 0)?.length ?: 0
-        val after = ic.getTextAfterCursor(5000, 0)?.length ?: 0
+        val extracted = ic.getExtractedText(ExtractedTextRequest(), 0)
+        if (extracted?.text != null) {
+            val fullLen = extracted.text.length
+            ic.beginBatchEdit()
+            ic.setSelection(0, fullLen)
+            ic.commitText(newText, 1)
+            ic.endBatchEdit()
+            return
+        }
+        val before = ic.getTextBeforeCursor(10000, 0)?.length ?: 0
+        val after = ic.getTextAfterCursor(10000, 0)?.length ?: 0
         ic.beginBatchEdit()
         ic.deleteSurroundingText(before, after)
         ic.commitText(newText, 1)
@@ -376,6 +459,7 @@ class KeyboardService : InputMethodService() {
         sinhalaBuffer.clear()
         clearComposingText()
         clearSuggestions()
+        applyTheme()
     }
 
     override fun onDestroy() {

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/keyboardRoot"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:background="#ECEFF1"
@@ -16,31 +17,33 @@
         <TextView
             android:id="@+id/btnLang"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:background="@drawable/key_bg"
+            android:layout_height="40dp"
+            android:background="@drawable/btn_3d_light"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:minWidth="48dp"
-            android:paddingHorizontal="8dp"
+            android:minWidth="52dp"
+            android:paddingHorizontal="12dp"
             android:text="@string/mode_sinhala"
-            android:textColor="#212121"
-            android:textSize="12sp" />
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold" />
 
         <TextView
             android:id="@+id/btnFix"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:layout_marginStart="4dp"
-            android:background="@drawable/key_bg"
+            android:layout_height="40dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/btn_3d_light"
             android:clickable="true"
             android:focusable="true"
             android:gravity="center"
-            android:minWidth="40dp"
-            android:paddingHorizontal="8dp"
+            android:minWidth="48dp"
+            android:paddingHorizontal="12dp"
             android:text="@string/key_fix"
-            android:textColor="#212121"
-            android:textSize="12sp"
+            android:textColor="#FFFFFF"
+            android:textSize="13sp"
+            android:textStyle="bold"
             android:visibility="gone" />
 
         <HorizontalScrollView
