@@ -423,9 +423,12 @@ class KeyboardService : InputMethodService() {
             clearSuggestions()
             return
         }
-        val items = englishSuggestions.suggest(word)
-        renderSuggestions(items) { candidate ->
-            replaceCurrentWord(ic, word, candidate.commitText)
+        englishSuggestions.suggest(word) { items ->
+            val liveIc = currentInputConnection ?: return@suggest
+            if (getCurrentWord(liveIc) != word) return@suggest
+            renderSuggestions(items) { candidate ->
+                replaceCurrentWord(liveIc, word, candidate.commitText)
+            }
         }
     }
 
@@ -612,6 +615,7 @@ class KeyboardService : InputMethodService() {
 
     override fun onDestroy() {
         stopRepeat()
+        englishSuggestions.close()
         scope.cancel()
         super.onDestroy()
     }
