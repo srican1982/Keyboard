@@ -46,6 +46,8 @@ class KeyboardService : InputMethodService() {
     private var keyboardView: View? = null
     private var suggestionRow: LinearLayout? = null
     private var suggestionScroll: View? = null
+    private var toolbarRow: View? = null
+    private var btnToolbarExpand: ImageView? = null
     private var btnLang: TextView? = null
     private var btnMic: ImageView? = null
     private var btnFix: TextView? = null
@@ -59,6 +61,7 @@ class KeyboardService : InputMethodService() {
     private var voiceInputHelper: VoiceInputHelper? = null
     private var englishTone = EnglishTone.PROFESSIONAL
     private var lastCommittedWord: String? = null
+    private var toolbarExpanded = false
 
     private var language = Language.SINHALA
     private var keyLayout = KeyLayout.LETTERS
@@ -99,7 +102,7 @@ class KeyboardService : InputMethodService() {
 
     private val themedKeyIds = letterKeyIds + listOf(
         R.id.keyShift, R.id.keyBackspace, R.id.keyNumbers, R.id.keyComma,
-        R.id.keySpace, R.id.keyPeriod, R.id.keyEnter,
+        R.id.keySpace, R.id.keyPeriod,
     )
 
     override fun onCreate() {
@@ -121,6 +124,8 @@ class KeyboardService : InputMethodService() {
         keyboardView = view
         suggestionRow = view.findViewById(R.id.suggestionRow)
         suggestionScroll = view.findViewById(R.id.suggestionScroll)
+        toolbarRow = view.findViewById(R.id.toolbarRow)
+        btnToolbarExpand = view.findViewById(R.id.btnToolbarExpand)
         btnLang = view.findViewById(R.id.btnLang)
         btnMic = view.findViewById(R.id.btnMic)
         btnFix = view.findViewById(R.id.btnFix)
@@ -143,15 +148,21 @@ class KeyboardService : InputMethodService() {
 
         setupRepeatKey(view.findViewById(R.id.keyBackspace)) { onBackspace() }
         view.findViewById<TextView>(R.id.keySpace).setOnClickListener { onSpace() }
-        view.findViewById<TextView>(R.id.keyEnter).setOnClickListener { onEnter() }
+        view.findViewById<ImageView>(R.id.keyEnter).setOnClickListener { onEnter() }
 
         btnLang?.setOnClickListener { toggleLanguage() }
         btnMic?.setOnClickListener { toggleVoiceInput() }
         btnFix?.setOnClickListener { fixGrammar() }
+        btnToolbarExpand?.setOnClickListener {
+            hapticKey()
+            toolbarExpanded = true
+            updateTopBarMode(hasSuggestions = (suggestionRow?.childCount ?: 0) > 0)
+        }
 
         applyKeyLayout()
         applyTheme()
         updateLanguageUi()
+        updateTopBarMode(hasSuggestions = false)
         return view
     }
 
@@ -205,6 +216,10 @@ class KeyboardService : InputMethodService() {
             setBackgroundResource(btnMicBg)
             setColorFilter(0xFFFFFFFF.toInt())
             alpha = 1f
+        }
+        btnToolbarExpand?.apply {
+            setBackgroundResource(R.drawable.toolbar_btn_expand)
+            setColorFilter(0xFFFFFFFF.toInt())
         }
         btnFix?.apply {
             setBackgroundResource(btnFixBg)
@@ -705,6 +720,9 @@ class KeyboardService : InputMethodService() {
         items: List<SuggestionCandidate>,
         onPick: (SuggestionCandidate) -> Unit,
     ) {
+        if (items.isNotEmpty()) {
+            toolbarExpanded = false
+        }
         val row = suggestionRow ?: return
         row.removeAllViews()
         items.forEach { candidate ->
@@ -742,12 +760,22 @@ class KeyboardService : InputMethodService() {
             }
             row.addView(chip)
         }
+        updateTopBarMode(hasSuggestions = items.isNotEmpty())
+    }
+
+    private fun updateTopBarMode(hasSuggestions: Boolean) {
+        val showSuggestions = hasSuggestions && !toolbarExpanded
+        btnToolbarExpand?.visibility = if (showSuggestions) View.VISIBLE else View.GONE
+        toolbarRow?.visibility = if (showSuggestions) View.GONE else View.VISIBLE
+        suggestionScroll?.visibility = if (showSuggestions) View.VISIBLE else View.GONE
     }
 
     private fun clearSuggestions() {
         nextWordJob?.cancel()
         englishCloudJob?.cancel()
         suggestionRow?.removeAllViews()
+        toolbarExpanded = false
+        updateTopBarMode(hasSuggestions = false)
     }
 
     private fun toggleVoiceInput() {
@@ -903,7 +931,6 @@ class KeyboardService : InputMethodService() {
         btnTonePro?.visibility = if (showTone) View.VISIBLE else View.GONE
         btnToneFriendly?.visibility = if (showTone) View.VISIBLE else View.GONE
         if (showTone) updateToneUi()
-        suggestionRow?.visibility = View.VISIBLE
     }
 
     private fun fixGrammar() {

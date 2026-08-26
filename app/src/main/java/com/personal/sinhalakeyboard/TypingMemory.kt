@@ -28,6 +28,8 @@ class TypingMemory(context: Context) {
         val key = roman.trim().lowercase()
         val value = sinhala.trim()
         if (key.length < 2 || value.isEmpty()) return
+        if (!SinhalaSuggestionRules.isReasonableRomanKey(key)) return
+        if (!SinhalaSuggestionRules.isReasonableSinhalaSuggestion(value, key.length)) return
         bump(sinhalaByRoman, key, value)
         saveAsync()
     }
@@ -173,7 +175,14 @@ class TypingMemory(context: Context) {
                     val parts = line.split('\t')
                     when (parts.getOrNull(0)) {
                         "S" -> if (parts.size >= 4) {
-                            sinhalaByRoman[parts[1]] = Entry(parts[2], parts[3].toIntOrNull() ?: 1)
+                            val roman = parts[1]
+                            val sinhala = parts[2]
+                            val count = parts[3].toIntOrNull() ?: 1
+                            if (SinhalaSuggestionRules.isReasonableRomanKey(roman) &&
+                                SinhalaSuggestionRules.isReasonableSinhalaSuggestion(sinhala, roman.length)
+                            ) {
+                                sinhalaByRoman[roman] = Entry(sinhala, count)
+                            }
                         }
                         "E" -> if (parts.size >= 3) {
                             englishWords[parts[1]] = Entry(parts[1], parts[2].toIntOrNull() ?: 1)

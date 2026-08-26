@@ -8,48 +8,83 @@
     android:padding="4dp">
 
     <LinearLayout
-        android:id="@+id/toolbarRow"
+        android:id="@+id/topBarRow"
         android:layout_width="match_parent"
         android:layout_height="40dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/btnLang"
-            style="@style/ToolbarButton"
-            android:layout_marginStart="0dp"
-            android:background="@drawable/toolbar_btn_lang"
-            android:text="@string/mode_sinhala"
-            android:textColor="#FFFFFF" />
-
-        <TextView
-            android:id="@+id/btnFix"
-            style="@style/ToolbarButton"
-            android:background="@drawable/toolbar_btn_fix"
-            android:text="@string/key_fix"
-            android:textColor="#FFFFFF"
+        <ImageView
+            android:id="@+id/btnToolbarExpand"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="4dp"
+            android:background="@drawable/toolbar_btn_expand"
+            android:clickable="true"
+            android:contentDescription="@string/show_toolbar"
+            android:focusable="true"
+            android:padding="8dp"
+            android:scaleType="centerInside"
+            android:src="@drawable/ic_toolbar_expand"
             android:visibility="gone" />
 
-        <TextView
-            android:id="@+id/btnTonePro"
-            style="@style/ToolbarButton"
-            android:background="@drawable/toolbar_btn_tone_on"
-            android:text="@string/tone_professional"
-            android:textColor="#FFFFFF"
-            android:visibility="gone" />
-
-        <TextView
-            android:id="@+id/btnToneFriendly"
-            style="@style/ToolbarButton"
-            android:background="@drawable/toolbar_btn_tone_off"
-            android:text="@string/tone_friendly"
-            android:textColor="#CFD8DC"
-            android:visibility="gone" />
-
-        <View
+        <LinearLayout
+            android:id="@+id/toolbarRow"
             android:layout_width="0dp"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/btnLang"
+                style="@style/ToolbarButton"
+                android:layout_marginStart="0dp"
+                android:background="@drawable/toolbar_btn_lang"
+                android:text="@string/mode_sinhala"
+                android:textColor="#FFFFFF" />
+
+            <TextView
+                android:id="@+id/btnFix"
+                style="@style/ToolbarButton"
+                android:background="@drawable/toolbar_btn_fix"
+                android:text="@string/key_fix"
+                android:textColor="#FFFFFF"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/btnTonePro"
+                style="@style/ToolbarButton"
+                android:background="@drawable/toolbar_btn_tone_on"
+                android:text="@string/tone_professional"
+                android:textColor="#FFFFFF"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/btnToneFriendly"
+                style="@style/ToolbarButton"
+                android:background="@drawable/toolbar_btn_tone_off"
+                android:text="@string/tone_friendly"
+                android:textColor="#CFD8DC"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <HorizontalScrollView
+            android:id="@+id/suggestionScroll"
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1"
+            android:scrollbars="none"
+            android:visibility="gone">
+
+            <LinearLayout
+                android:id="@+id/suggestionRow"
+                android:layout_width="wrap_content"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
+                android:paddingHorizontal="2dp" />
+        </HorizontalScrollView>
 
         <ProgressBar
             android:id="@+id/progress"
@@ -70,23 +105,6 @@
             android:scaleType="centerInside"
             android:src="@drawable/ic_mic" />
     </LinearLayout>
-
-    <HorizontalScrollView
-        android:id="@+id/suggestionScroll"
-        android:layout_width="match_parent"
-        android:layout_height="36dp"
-        android:layout_marginTop="4dp"
-        android:scrollbars="none"
-        android:visibility="visible">
-
-        <LinearLayout
-            android:id="@+id/suggestionRow"
-            android:layout_width="wrap_content"
-            android:layout_height="match_parent"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingHorizontal="2dp" />
-    </HorizontalScrollView>
 
     <include
         android:id="@+id/emojiPanel"
@@ -141,7 +159,12 @@
             <TextView android:id="@+id/keyComma" style="@style/KeyText" android:text="," />
             <TextView android:id="@+id/keySpace" style="@style/KeyTextSpace" android:text="space" />
             <TextView android:id="@+id/keyPeriod" style="@style/KeyText" android:text="." />
-            <TextView android:id="@+id/keyEnter" style="@style/KeyTextWide" android:text="↵" />
+            <ImageView
+                android:id="@+id/keyEnter"
+                style="@style/KeyTextSend"
+                android:contentDescription="@string/key_send"
+                android:scaleType="centerInside"
+                android:src="@drawable/ic_send_arrow" />
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>
