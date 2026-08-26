@@ -19,10 +19,17 @@ class VoiceInputHelper(
     private var listening = false
     private var continuous = false
     private var languageTag = "en-US"
+    private var pendingStart = false
 
     fun isListening(): Boolean = listening
 
     fun isContinuous(): Boolean = continuous
+
+    /** Pre-create recognizer so the first mic tap is instant. */
+    fun prepare() {
+        if (!SpeechRecognizer.isRecognitionAvailable(context)) return
+        ensureRecognizer()
+    }
 
     fun start(languageTag: String, continuousMode: Boolean = false) {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
@@ -31,55 +38,66 @@ class VoiceInputHelper(
         }
         this.languageTag = languageTag
         continuous = continuousMode
-        stopRecognizerOnly()
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-            setRecognitionListener(this@VoiceInputHelper)
-        }
+        pendingStart = true
+        ensureRecognizer()
+        speechRecognizer?.cancel()
         startListeningInternal()
     }
 
     fun stop() {
         continuous = false
+        pendingStart = false
         stopRecognizerOnly()
     }
 
+    private fun ensureRecognizer() {
+        if (speechRecognizer != null) return
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
+            setRecognitionListener(this@VoiceInputHelper)
+        }
+    }
+
     private fun stopRecognizerOnly() {
-        if (!listening && speechRecognizer == null) return
         speechRecognizer?.stopListening()
         speechRecognizer?.cancel()
-        listening = false
-        onListeningChanged(false)
+        if (listening) {
+            listening = false
+            onListeningChanged(false)
+        }
     }
 
     fun destroy() {
         continuous = false
+        pendingStart = false
         stopRecognizerOnly()
         speechRecognizer?.destroy()
         speechRecognizer = null
     }
 
     private fun startListeningInternal() {
+        val recognizer = speechRecognizer ?: return
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
+            putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1500L)
         }
-        speechRecognizer?.startListening(intent)
         listening = true
         onListeningChanged(true)
+        recognizer.startListening(intent)
     }
 
     private fun restartIfContinuous() {
         if (!continuous) return
-        speechRecognizer?.destroy()
-        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-            setRecognitionListener(this@VoiceInputHelper)
-        }
+        speechRecognizer?.cancel()
         startListeningInternal()
     }
 
-    override fun onReadyForSpeech(params: Bundle?) = Unit
+    override fun onReadyForSpeech(params: Bundle?) {
+        if (pendingStart) pendingStart = false
+    }
 
     override fun onBeginningOfSpeech() = Unit
 
@@ -104,6 +122,7 @@ class VoiceInputHelper(
             return
         }
         listening = false
+        pendingStart = false
         onListeningChanged(false)
         val message = when (error) {
             SpeechRecognizer.ERROR_AUDIO -> "Microphone error"

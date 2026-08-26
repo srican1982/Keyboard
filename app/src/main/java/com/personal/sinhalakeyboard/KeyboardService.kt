@@ -113,7 +113,7 @@ class KeyboardService : InputMethodService() {
             onFinal = { text -> insertVoiceText(text) },
             onError = { message -> Toast.makeText(this, message, Toast.LENGTH_SHORT).show() },
             onListeningChanged = { listening -> updateMicButton(listening) },
-        )
+        ).also { it.prepare() }
     }
 
     override fun onCreateInputView(): View {
@@ -742,12 +742,8 @@ class KeyboardService : InputMethodService() {
         }
         val locale = if (language == Language.SINHALA) "si-LK" else "en-US"
         val continuous = Prefs.isContinuousVoice(this)
+        updateMicButton(listening = true)
         helper.start(locale, continuousMode = continuous)
-        Toast.makeText(
-            this,
-            if (continuous) R.string.continuous_voice_summary else R.string.voice_listening,
-            Toast.LENGTH_SHORT,
-        ).show()
     }
 
     private fun updateMicButton(listening: Boolean) {
@@ -985,6 +981,7 @@ class KeyboardService : InputMethodService() {
         lastCommittedWord = null
         keyLayout = KeyLayout.LETTERS
         englishTone = Prefs.getEnglishTone(this)
+        voiceInputHelper?.prepare()
         applyKeyLayout()
         applyTheme()
     }
