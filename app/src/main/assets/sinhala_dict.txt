@@ -10,6 +10,7 @@ hondai|හොඳයි|100
 lankawa|ලංකාව|100
 amma|අම්ම|95
 ammaa|අම්මා|95
+taaththaa|තාත්තා|95
 nangi|නංගි|95
 malli|මල්ලි|95
 kohomath|කොහොමද|95
@@ -47,6 +48,8 @@ paasala|පාසල|90
 colombo|කොළඹ|90
 shri|ශ්‍රී|90
 bankuwa|බැංකුව|90
+mae|මැ|85
+kae|කැ|85
 balanawa|බලනවා|85
 gannawa|ගන්නවා|85
 gihin|ගිහින්|85
@@ -55,6 +58,8 @@ pin|පින්|85
 pasala|පාසල|85
 banga|බැංකු|85
 kata|කතා|85
+ae|ඇ|80
+aee|ඈ|80
 kohomd|කොහොමද|80
 en|එන්|80
 eyi|එයි|80

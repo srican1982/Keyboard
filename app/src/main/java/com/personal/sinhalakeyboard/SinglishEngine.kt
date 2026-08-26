@@ -99,6 +99,8 @@ class SinglishEngine(context: Context) {
         val variants = linkedSetOf(word)
         val replacements = listOf(
             "aa" to "a", "a" to "aa",
+            "ae" to "A", "A" to "ae",
+            "aee" to "AA", "AA" to "aee",
             "ee" to "e", "e" to "ee",
             "ii" to "i", "i" to "ii",
             "oo" to "o", "o" to "oo",

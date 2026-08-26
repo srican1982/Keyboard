@@ -1,10 +1,10 @@
 package com.personal.sinhalakeyboard
 
 /**
- * Helakuru-style Singlish → Sinhala transliteration engine.
+ * Singlish → Sinhala transliteration (Helakuru + Google Input Tools vowels).
  *
- * Ported from [@siyabasa/singlish](https://github.com/remeinium/singlish) (Apache-2.0).
- * Two-stage: greedy phoneme tokenization → contextual Unicode rendering.
+ * Based on [@siyabasa/singlish](https://github.com/remeinium/singlish) (Apache-2.0)
+ * with Google/nongnu-style ae/aee (ඇ/ඈ) and dental t/d defaults.
  */
 object SinglishConverter {
 
@@ -22,6 +22,9 @@ object SinglishConverter {
         "zqa" to "SANYAKA_DHA",
         "zka" to "SANYAKA_KA",
         "zha" to "SANYAKA_HA",
+        "aee" to "V_AE_LONG",
+        "aae" to "V_AE_LONG",
+        "ae" to "V_AE",
         "aa" to "V_AA",
         "Aa" to "V_AE_LONG",
         "AA" to "V_AE_LONG",
@@ -60,10 +63,10 @@ object SinglishConverter {
         "k" to "K",
         "g" to "G",
         "j" to "J",
-        "t" to "RETROFLEX_T",
-        "d" to "RETROFLEX_D",
-        "T" to "RETROFLEX_TH_SINGLE",
-        "D" to "RETROFLEX_DH_SINGLE",
+        "t" to "TH",
+        "d" to "DH",
+        "T" to "RETROFLEX_T",
+        "D" to "RETROFLEX_D",
         "n" to "N",
         "N" to "RETROFLEX_N",
         "p" to "P",
