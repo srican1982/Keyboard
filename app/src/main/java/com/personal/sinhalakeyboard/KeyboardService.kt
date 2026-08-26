@@ -57,7 +57,6 @@ class KeyboardService : InputMethodService() {
     private var emojiPanel: EmojiPanel? = null
 
     private var voiceInputHelper: VoiceInputHelper? = null
-    private var primarySuggestion: SuggestionCandidate? = null
     private var englishTone = EnglishTone.PROFESSIONAL
     private var lastCommittedWord: String? = null
 
