@@ -7,6 +7,7 @@ object Prefs {
     private const val NAME = "sinhala_keyboard_prefs"
     private const val KEY_API = "openrouter_api_key"
     private const val KEY_THEME = "keyboard_theme"
+    private const val KEY_AUTO_CORRECT = "auto_correct_on_space"
 
     private fun prefs(context: Context): SharedPreferences =
         context.getSharedPreferences(NAME, Context.MODE_PRIVATE)
@@ -23,5 +24,12 @@ object Prefs {
 
     fun setTheme(context: Context, theme: KeyboardTheme) {
         prefs(context).edit().putString(KEY_THEME, theme.id).apply()
+    }
+
+    fun isAutoCorrectOnSpace(context: Context): Boolean =
+        prefs(context).getBoolean(KEY_AUTO_CORRECT, true)
+
+    fun setAutoCorrectOnSpace(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_AUTO_CORRECT, enabled).apply()
     }
 }

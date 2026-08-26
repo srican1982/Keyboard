@@ -1,5 +1,7 @@
 package com.personal.sinhalakeyboard
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.inputmethodservice.InputMethodService
 import android.os.Handler
 import android.os.Looper
@@ -13,6 +15,7 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -38,8 +41,12 @@ class KeyboardService : InputMethodService() {
     private var keyboardView: View? = null
     private var suggestionRow: LinearLayout? = null
     private var btnLang: TextView? = null
+    private var btnMic: TextView? = null
     private var btnFix: TextView? = null
     private var progress: ProgressBar? = null
+
+    private var voiceInputHelper: VoiceInputHelper? = null
+    private var primarySuggestion: SuggestionCandidate? = null
 
     private var language = Language.SINHALA
     private var keyLayout = KeyLayout.LETTERS
@@ -54,6 +61,7 @@ class KeyboardService : InputMethodService() {
     private var sinhalaSuggestionColor = 0xFF1B5E20.toInt()
     private var romanSuggestionColor = 0xFF616161.toInt()
     private var suggestionChipBg = R.drawable.suggestion_chip_light
+    private var suggestionChipPrimaryBg = R.drawable.suggestion_chip_primary_light
 
     private val letterKeyIds = listOf(
         R.id.keyQ, R.id.keyW, R.id.keyE, R.id.keyR, R.id.keyT, R.id.keyY, R.id.keyU,
@@ -85,6 +93,12 @@ class KeyboardService : InputMethodService() {
         super.onCreate()
         singlishEngine = SinglishEngine(this)
         englishSuggestions = EnglishSuggestions(this)
+        voiceInputHelper = VoiceInputHelper(
+            context = this,
+            onFinal = { text -> insertVoiceText(text) },
+            onError = { message -> Toast.makeText(this, message, Toast.LENGTH_SHORT).show() },
+            onListeningChanged = { listening -> updateMicButton(listening) },
+        )
     }
 
     override fun onCreateInputView(): View {
@@ -92,6 +106,7 @@ class KeyboardService : InputMethodService() {
         keyboardView = view
         suggestionRow = view.findViewById(R.id.suggestionRow)
         btnLang = view.findViewById(R.id.btnLang)
+        btnMic = view.findViewById(R.id.btnMic)
         btnFix = view.findViewById(R.id.btnFix)
         progress = view.findViewById(R.id.progress)
 
@@ -100,6 +115,7 @@ class KeyboardService : InputMethodService() {
         view.findViewById<TextView>(R.id.keyEnter).setOnClickListener { onEnter() }
 
         btnLang?.setOnClickListener { toggleLanguage() }
+        btnMic?.setOnClickListener { toggleVoiceInput() }
         btnFix?.setOnClickListener { fixGrammar() }
 
         applyKeyLayout()
@@ -114,6 +130,7 @@ class KeyboardService : InputMethodService() {
 
         val keyBg: Int
         val btnLangBg: Int
+        val btnMicBg: Int
         val btnFixBg: Int
         when (activeTheme) {
             KeyboardTheme.WHITE -> {
@@ -122,8 +139,10 @@ class KeyboardService : InputMethodService() {
                 keyTextColor = 0xFF212121.toInt()
                 keyMutedColor = 0xFF616161.toInt()
                 btnLangBg = R.drawable.btn_3d_light
+                btnMicBg = R.drawable.btn_3d_mic_light
                 btnFixBg = R.drawable.btn_3d_fix_light
                 suggestionChipBg = R.drawable.suggestion_chip_light
+                suggestionChipPrimaryBg = R.drawable.suggestion_chip_primary_light
                 sinhalaSuggestionColor = 0xFF1B5E20.toInt()
                 romanSuggestionColor = 0xFF616161.toInt()
             }
@@ -133,8 +152,10 @@ class KeyboardService : InputMethodService() {
                 keyTextColor = 0xFFFFFFFF.toInt()
                 keyMutedColor = 0xFFB0BEC5.toInt()
                 btnLangBg = R.drawable.btn_3d_dark
+                btnMicBg = R.drawable.btn_3d_mic_dark
                 btnFixBg = R.drawable.btn_3d_fix_dark
                 suggestionChipBg = R.drawable.suggestion_chip_dark
+                suggestionChipPrimaryBg = R.drawable.suggestion_chip_primary_dark
                 sinhalaSuggestionColor = 0xFF81C784.toInt()
                 romanSuggestionColor = 0xFFB0BEC5.toInt()
             }
@@ -149,6 +170,10 @@ class KeyboardService : InputMethodService() {
 
         btnLang?.apply {
             setBackgroundResource(btnLangBg)
+            setTextColor(0xFFFFFFFF.toInt())
+        }
+        btnMic?.apply {
+            setBackgroundResource(btnMicBg)
             setTextColor(0xFFFFFFFF.toInt())
         }
         btnFix?.apply {
@@ -327,11 +352,37 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun onSpace() {
-        if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
+        val ic = currentInputConnection
+        if (Prefs.isAutoCorrectOnSpace(this)) {
+            applyAutoCorrectBeforeBreak()
+        } else if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
         }
-        currentInputConnection?.commitText(" ", 1)
+        ic?.commitText(" ", 1)
         clearSuggestions()
+    }
+
+    private fun applyAutoCorrectBeforeBreak() {
+        if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
+            val typed = sinhalaBuffer.toString()
+            val pick = primarySuggestion?.takeIf { !it.isRoman }?.commitText
+            if (pick != null && pick != singlishEngine.transliterateLive(typed)) {
+                commitSinhalaWord(pick)
+            } else {
+                commitSinhalaWord()
+            }
+            return
+        }
+        if (language == Language.ENGLISH) {
+            val ic = currentInputConnection ?: return
+            val word = getCurrentWord(ic)
+            val suggestion = primarySuggestion?.commitText
+            if (word.isNotEmpty() && !suggestion.isNullOrEmpty() &&
+                suggestion.lowercase() != word.lowercase()
+            ) {
+                replaceCurrentWord(ic, word, suggestion)
+            }
+        }
     }
 
     private fun onEnter() {
@@ -438,13 +489,23 @@ class KeyboardService : InputMethodService() {
     ) {
         val row = suggestionRow ?: return
         row.removeAllViews()
-        for (candidate in items) {
+        primarySuggestion = items.firstOrNull { !it.isRoman } ?: items.firstOrNull()
+        items.forEachIndexed { index, candidate ->
+            val isPrimary = candidate == primarySuggestion
             val chip = TextView(this).apply {
                 text = candidate.display
-                textSize = 16f
-                setTextColor(if (candidate.isRoman) romanSuggestionColor else sinhalaSuggestionColor)
+                textSize = if (isPrimary) 17f else 16f
+                setTextColor(
+                    if (candidate.isRoman) {
+                        romanSuggestionColor
+                    } else if (isPrimary) {
+                        if (activeTheme == KeyboardTheme.BLACK) 0xFFFFFFFF.toInt() else 0xFF1B5E20.toInt()
+                    } else {
+                        sinhalaSuggestionColor
+                    },
+                )
                 setPadding(24, 12, 24, 12)
-                setBackgroundResource(suggestionChipBg)
+                setBackgroundResource(if (isPrimary) suggestionChipPrimaryBg else suggestionChipBg)
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -457,6 +518,41 @@ class KeyboardService : InputMethodService() {
 
     private fun clearSuggestions() {
         suggestionRow?.removeAllViews()
+        primarySuggestion = null
+    }
+
+    private fun toggleVoiceInput() {
+        val helper = voiceInputHelper ?: return
+        if (helper.isListening()) {
+            helper.stop()
+            return
+        }
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            Toast.makeText(this, R.string.mic_permission_needed, Toast.LENGTH_LONG).show()
+            return
+        }
+        if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
+            commitSinhalaWord()
+        }
+        val locale = if (language == Language.SINHALA) "si-LK" else "en-US"
+        helper.start(locale)
+        Toast.makeText(this, R.string.voice_listening, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun updateMicButton(listening: Boolean) {
+        btnMic?.text = if (listening) "..." else getString(R.string.key_mic)
+    }
+
+    private fun insertVoiceText(text: String) {
+        val ic = currentInputConnection ?: return
+        if (language == Language.SINHALA) {
+            sinhalaBuffer.clear()
+            clearComposingText()
+        }
+        ic.commitText("$text ", 1)
+        clearSuggestions()
     }
 
     private fun getCurrentWord(ic: InputConnection): String {
@@ -615,6 +711,8 @@ class KeyboardService : InputMethodService() {
 
     override fun onDestroy() {
         stopRepeat()
+        voiceInputHelper?.destroy()
+        voiceInputHelper = null
         englishSuggestions.close()
         scope.cancel()
         super.onDestroy()

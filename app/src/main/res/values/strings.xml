@@ -12,6 +12,14 @@
     <string name="mode_sinhala">සිං</string>
     <string name="mode_english">EN</string>
     <string name="key_fix">Fix</string>
+    <string name="key_mic">Mic</string>
+    <string name="voice_listening">Listening…</string>
+    <string name="mic_permission_needed">Allow microphone for Sinhala Keyboard in app settings</string>
+    <string name="auto_correct_title">Auto-complete on space</string>
+    <string name="auto_correct_summary">Apply the top suggestion when you press space (like Gboard)</string>
+    <string name="mic_settings_title">Voice typing</string>
+    <string name="mic_settings_summary">Tap Mic on the keyboard. Grant microphone permission below.</string>
+    <string name="grant_mic">Allow microphone</string>
     <string name="theme_title">Keyboard theme</string>
     <string name="theme_white">White</string>
     <string name="theme_black">Black</string>

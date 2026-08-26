@@ -56,6 +56,42 @@
                 android:text="@string/theme_black" />
         </RadioGroup>
 
+        <com.google.android.material.switchmaterial.SwitchMaterial
+            android:id="@+id/switchAutoCorrect"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/auto_correct_title" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/auto_correct_summary"
+            android:textSize="13sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="@string/mic_settings_title"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="@string/mic_settings_summary"
+            android:textSize="13sp" />
+
+        <Button
+            android:id="@+id/btnMicPermission"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/grant_mic" />
+
         <Button
             android:id="@+id/btnSave"
             android:layout_width="match_parent"
