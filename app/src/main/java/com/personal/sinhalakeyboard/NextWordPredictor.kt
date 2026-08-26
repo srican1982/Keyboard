@@ -3,7 +3,10 @@ package com.personal.sinhalakeyboard
 import android.content.Context
 
 /** Local bigram next-word predictions (offline). */
-class NextWordPredictor(context: Context) {
+class NextWordPredictor(
+    context: Context,
+    private val typingMemory: TypingMemory? = null,
+) {
 
     private val englishProfessional: Map<String, List<String>>
     private val englishFriendly: Map<String, List<String>>
@@ -29,13 +32,22 @@ class NextWordPredictor(context: Context) {
             else -> englishProfessional
         }
         val words = map[key].orEmpty()
-        return words.take(limit).map { word ->
-            SuggestionCandidate(
-                display = word,
-                commitText = word,
-                isNextWord = true,
-            )
+        val personal = typingMemory?.nextWordSuggestions(key, sinhala, limit).orEmpty()
+        val seen = personal.map { it.commitText.lowercase() }.toMutableSet()
+        val merged = personal.toMutableList()
+        for (word in words) {
+            if (seen.add(word.lowercase())) {
+                merged.add(
+                    SuggestionCandidate(
+                        display = word,
+                        commitText = word,
+                        isNextWord = true,
+                    ),
+                )
+            }
+            if (merged.size >= limit) break
         }
+        return merged.take(limit)
     }
 
     private fun loadBigrams(context: Context, assetName: String): Map<String, List<String>> {

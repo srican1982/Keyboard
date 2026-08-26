@@ -12,7 +12,10 @@ import java.util.Locale
  * English word suggestions from the device spell checker and personal dictionary —
  * no hardcoded word list.
  */
-class EnglishSuggestions(context: Context) {
+class EnglishSuggestions(
+    context: Context,
+    private val typingMemory: TypingMemory? = null,
+) {
 
     private val appContext = context.applicationContext
     private val textServicesManager =
@@ -90,6 +93,7 @@ class EnglishSuggestions(context: Context) {
         pendingCallback = null
 
         val merged = linkedSetOf<SuggestionCandidate>()
+        typingMemory?.englishSuggestions(prefix, limit = 4)?.forEach { merged.add(it) }
         merged.addAll(pendingUserWords)
         merged.addAll(spellSuggestions)
 

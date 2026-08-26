@@ -6,7 +6,10 @@ import android.content.Context
  * Singlish IME engine: Helakuru-style phonetic conversion (layer 1–2) plus
  * dictionary predictions for lazy/alternate spellings (layer 3).
  */
-class SinglishEngine(context: Context) {
+class SinglishEngine(
+    context: Context,
+    private val typingMemory: TypingMemory? = null,
+) {
 
     private val dictionary: MutableMap<String, String> = mutableMapOf()
     private val frequency: MutableMap<String, Int> = mutableMapOf()
@@ -53,6 +56,9 @@ class SinglishEngine(context: Context) {
 
         val lower = p.lowercase()
         val results = LinkedHashSet<SuggestionCandidate>()
+
+        // Layer 0: words you typed before (highest priority)
+        typingMemory?.sinhalaSuggestions(p, limit = 4)?.forEach { results.add(it) }
 
         // Layer 3: dictionary prefix + lazy spellings (higher frequency first)
         dictionary.entries

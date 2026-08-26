@@ -41,6 +41,7 @@ class KeyboardService : InputMethodService() {
     private lateinit var singlishEngine: SinglishEngine
     private lateinit var englishSuggestions: EnglishSuggestions
     private lateinit var nextWordPredictor: NextWordPredictor
+    private lateinit var typingMemory: TypingMemory
 
     private var keyboardView: View? = null
     private var suggestionRow: LinearLayout? = null
@@ -57,6 +58,7 @@ class KeyboardService : InputMethodService() {
     private var voiceInputHelper: VoiceInputHelper? = null
     private var primarySuggestion: SuggestionCandidate? = null
     private var englishTone = EnglishTone.PROFESSIONAL
+    private var lastCommittedWord: String? = null
 
     private var language = Language.SINHALA
     private var keyLayout = KeyLayout.LETTERS
@@ -102,9 +104,10 @@ class KeyboardService : InputMethodService() {
 
     override fun onCreate() {
         super.onCreate()
-        singlishEngine = SinglishEngine(this)
-        englishSuggestions = EnglishSuggestions(this)
-        nextWordPredictor = NextWordPredictor(this)
+        typingMemory = TypingMemory(this)
+        singlishEngine = SinglishEngine(this, typingMemory)
+        englishSuggestions = EnglishSuggestions(this, typingMemory)
+        nextWordPredictor = NextWordPredictor(this, typingMemory)
         voiceInputHelper = VoiceInputHelper(
             context = this,
             onFinal = { text -> insertVoiceText(text) },
@@ -413,13 +416,17 @@ class KeyboardService : InputMethodService() {
         val currentWord = getCurrentWord(ic)
         if (Prefs.isAutoCorrectOnSpace(this)) {
             if (currentWord.isEmpty() && primarySuggestion?.isNextWord == true) {
-                ic.commitText("${primarySuggestion!!.commitText} ", 1)
+                val picked = primarySuggestion!!.commitText
+                ic.commitText("$picked ", 1)
+                rememberWordCommitted(picked)
                 updateNextWordSuggestions()
                 return
             }
             applyAutoCorrectBeforeBreak()
         } else if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
+        } else if (language == Language.ENGLISH && currentWord.isNotEmpty()) {
+            rememberWordCommitted(currentWord)
         }
         ic.commitText(" ", 1)
         updateNextWordSuggestions()
@@ -444,6 +451,9 @@ class KeyboardService : InputMethodService() {
                 suggestion.lowercase() != word.lowercase()
             ) {
                 replaceCurrentWord(ic, word, suggestion)
+                rememberWordCommitted(suggestion)
+            } else if (word.isNotEmpty()) {
+                rememberWordCommitted(word)
             }
         }
     }
@@ -474,11 +484,45 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun commitSinhalaWord(sinhala: String? = null) {
-        val word = sinhala ?: singlishEngine.transliterate(sinhalaBuffer.toString())
+        val roman = sinhalaBuffer.toString()
+        val word = sinhala ?: singlishEngine.transliterate(roman)
         if (word.isEmpty()) return
         currentInputConnection?.commitText(word, 1)
+        rememberWordCommitted(word, roman)
         sinhalaBuffer.clear()
         clearComposingText()
+    }
+
+    private fun rememberWordCommitted(word: String, roman: String? = null) {
+        val cleaned = word.trim()
+        if (cleaned.isEmpty()) return
+        val sinhala = language == Language.SINHALA
+        if (sinhala) {
+            val key = roman?.trim().orEmpty()
+            if (key.isNotEmpty()) {
+                typingMemory.rememberSinhala(key, cleaned)
+            }
+        } else {
+            typingMemory.rememberEnglish(cleaned)
+        }
+        lastCommittedWord?.let { prev ->
+            typingMemory.rememberBigram(prev, cleaned, sinhala)
+        }
+        lastCommittedWord = cleaned
+    }
+
+    private fun rememberVoiceWords(text: String) {
+        val sinhala = language == Language.SINHALA
+        val tokens = text.split(Regex("\\s+")).filter { it.isNotBlank() }
+        for (token in tokens) {
+            if (!sinhala) {
+                typingMemory.rememberEnglish(token)
+            }
+            lastCommittedWord?.let { prev ->
+                typingMemory.rememberBigram(prev, token, sinhala)
+            }
+            lastCommittedWord = token
+        }
     }
 
     private fun commitRomanWord(roman: String) {
@@ -621,6 +665,7 @@ class KeyboardService : InputMethodService() {
     private fun commitNextWord(candidate: SuggestionCandidate) {
         val ic = currentInputConnection ?: return
         ic.commitText("${candidate.commitText} ", 1)
+        rememberWordCommitted(candidate.commitText)
         updateNextWordSuggestions()
     }
 
@@ -643,6 +688,11 @@ class KeyboardService : InputMethodService() {
                 textSize = if (isPrimary) 17f else 16f
                 setTextColor(
                     when {
+                        candidate.isPersonal -> if (activeTheme == KeyboardTheme.BLACK) {
+                            0xFFFFB74D.toInt()
+                        } else {
+                            0xFFE65100.toInt()
+                        }
                         candidate.isCloud -> if (activeTheme == KeyboardTheme.BLACK) {
                             0xFF90CAF9.toInt()
                         } else {
@@ -770,6 +820,7 @@ class KeyboardService : InputMethodService() {
             clearComposingText()
         }
         ic.commitText("$text ", 1)
+        rememberVoiceWords(text.trim())
         updateNextWordSuggestions()
     }
 
@@ -799,6 +850,7 @@ class KeyboardService : InputMethodService() {
         val toDelete = before.takeLastWhile { !it.isWhitespace() && it != '\n' }
         ic.deleteSurroundingText(toDelete.length, 0)
         ic.commitText(newWord, 1)
+        rememberWordCommitted(newWord)
         updateEnglishSuggestions()
     }
 
@@ -930,6 +982,7 @@ class KeyboardService : InputMethodService() {
         sinhalaBuffer.clear()
         clearComposingText()
         clearSuggestions()
+        lastCommittedWord = null
         keyLayout = KeyLayout.LETTERS
         englishTone = Prefs.getEnglishTone(this)
         applyKeyLayout()

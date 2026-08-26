@@ -6,4 +6,5 @@ data class SuggestionCandidate(
     val isRoman: Boolean = false,
     val isNextWord: Boolean = false,
     val isCloud: Boolean = false,
+    val isPersonal: Boolean = false,
 )
