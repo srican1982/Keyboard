@@ -103,7 +103,13 @@ object SinhalaSuggestionRules {
     /** Homophone / case toggles must stay close to what the user typed. */
     fun isReasonableSpellingVariant(original: String, variant: String): Boolean {
         if (variant == original) return false
-        if (!isReasonableRomanKey(variant)) return false
-        return variant.length <= original.length + 2 && variant.length + 2 >= original.length
+        val variantKey = variant.replace(" ", "").lowercase()
+        val originalKey = original.replace(" ", "").lowercase()
+        if (!isReasonableRomanKey(variantKey)) return false
+        if (variant.contains(" ")) {
+            return variantKey.length <= originalKey.length + 4 &&
+                variantKey.length + 2 >= originalKey.length
+        }
+        return variant.length <= original.length + 3 && variant.length + 2 >= original.length
     }
 }

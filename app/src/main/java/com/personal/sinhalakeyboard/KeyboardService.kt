@@ -1,5 +1,6 @@
 package com.personal.sinhalakeyboard
 
+import android.content.Intent
 import android.Manifest
 import android.content.pm.PackageManager
 import android.inputmethodservice.InputMethodService
@@ -48,6 +49,7 @@ class KeyboardService : InputMethodService() {
     private var suggestionScroll: View? = null
     private var toolbarRow: View? = null
     private var btnToolbarExpand: ImageView? = null
+    private var btnSettings: ImageView? = null
     private var btnLang: TextView? = null
     private var btnMic: ImageView? = null
     private var btnFix: TextView? = null
@@ -126,6 +128,7 @@ class KeyboardService : InputMethodService() {
         suggestionScroll = view.findViewById(R.id.suggestionScroll)
         toolbarRow = view.findViewById(R.id.toolbarRow)
         btnToolbarExpand = view.findViewById(R.id.btnToolbarExpand)
+        btnSettings = view.findViewById(R.id.btnSettings)
         btnLang = view.findViewById(R.id.btnLang)
         btnMic = view.findViewById(R.id.btnMic)
         btnFix = view.findViewById(R.id.btnFix)
@@ -151,6 +154,7 @@ class KeyboardService : InputMethodService() {
         view.findViewById<ImageView>(R.id.keyEnter).setOnClickListener { onEnter() }
 
         btnLang?.setOnClickListener { toggleLanguage() }
+        btnSettings?.setOnClickListener { openSettings() }
         btnMic?.setOnClickListener { toggleVoiceInput() }
         btnFix?.setOnClickListener { fixGrammar() }
         btnToolbarExpand?.setOnClickListener {
@@ -219,6 +223,10 @@ class KeyboardService : InputMethodService() {
         }
         btnToolbarExpand?.apply {
             setBackgroundResource(R.drawable.toolbar_btn_expand)
+            setColorFilter(0xFFFFFFFF.toInt())
+        }
+        btnSettings?.apply {
+            setBackgroundResource(R.drawable.toolbar_btn_settings)
             setColorFilter(0xFFFFFFFF.toInt())
         }
         btnFix?.apply {
@@ -911,6 +919,14 @@ class KeyboardService : InputMethodService() {
             view.findViewById<TextView>(id).text =
                 if (shiftOn) letter.uppercase() else letter
         }
+    }
+
+    private fun openSettings() {
+        hapticKey()
+        val intent = Intent(this, SettingsActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        startActivity(intent)
     }
 
     private fun toggleLanguage() {

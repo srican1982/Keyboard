@@ -50,7 +50,7 @@ class SinglishEngine(
 
     fun transliterateLive(input: String): String = SinglishConverter.convert(input.trim())
 
-    fun suggestions(prefix: String, limit: Int = 8): List<SuggestionCandidate> {
+    fun suggestions(prefix: String, limit: Int = 12): List<SuggestionCandidate> {
         val p = prefix.trim()
         if (p.isEmpty()) return emptyList()
 

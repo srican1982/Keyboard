@@ -14,12 +14,38 @@ class SinglishAmbiguityTest {
     private val KA = "\u0D9A"
     private val TA = "\u0DA7"
     private val ANUSVARA = "\u0D82"
+    private val HAL = "\u0DCA"
 
     @Test
     fun daAmbiguity_dentalAndRetroflex() {
         assertEquals(DA, c("da"))
         assertEquals(DHA, c("dha"))
         assertTrue(SinglishAmbiguityVariants.liveVariants("da").contains("dha"))
+    }
+
+    @Test
+    fun standaloneA_ambiguity() {
+        assertEquals("\u0D85", c("a")) // අ
+        assertEquals("\u0D86", c("aa")) // ආ
+        assertEquals("\u0D87", c("ae")) // ඇ
+        assertEquals("\u0D88", c("aee")) // ඈ
+        val variants = SinglishAmbiguityVariants.liveVariants("a")
+        assertTrue(variants.contains("aa"))
+        assertTrue(variants.contains("ae"))
+        assertTrue(variants.contains("aee"))
+    }
+
+    @Test
+    fun kaAmbiguity_consonantVowelStem() {
+        assertEquals(KA, c("ka")) // ක
+        assertEquals("$KA\u0DCF", c("kaa")) // කා
+        assertEquals("$KA\u0DD0", c("kae")) // කැ
+        assertEquals("$KA\u0DD1", c("kaee")) // කෑ
+        val variants = SinglishAmbiguityVariants.liveVariants("ka")
+        assertTrue(variants.contains("kaa"))
+        assertTrue(variants.contains("kae"))
+        assertTrue(variants.contains("kaee"))
+        assertTrue(variants.contains("k"))
     }
 
     @Test
@@ -45,6 +71,20 @@ class SinglishAmbiguityTest {
         val variants = SinglishAmbiguityVariants.liveVariants("kaa")
         assertTrue(variants.contains("kae"))
         assertTrue(variants.contains("kaee"))
+    }
+
+    @Test
+    fun handaAmbiguity_sanyakaAndStacked() {
+        val moon = c("handa") // හඳ (nd → ඳ)
+        val junction = c("han dha")
+        val spoon = c("haen dha")
+        assertNotEquals(moon, junction)
+        assertNotEquals(moon, spoon)
+        assertNotEquals(junction, spoon)
+        val variants = SinglishAmbiguityVariants.liveVariants("handa")
+        assertTrue(variants.contains("han dha"))
+        assertTrue(variants.contains("haen dha"))
+        assertTrue(variants.contains("haenda"))
     }
 
     @Test
