@@ -280,8 +280,24 @@ object SinglishConverter {
                         }
                     }
                     "SANYAKA_BA" -> {
-                        output.append(sanyakaChar)
-                        i++
+                        when {
+                            next != null && isVowelModifier(next) -> {
+                                output.append(sanyakaChar).append(vowelModifier.getValue(next))
+                                i += 2
+                            }
+                            next != null && isInherentA(next) -> {
+                                output.append(sanyakaChar)
+                                i += 2
+                            }
+                            next != null && (isConsonant(next) || isSanyaka(next)) -> {
+                                output.append(sanyakaChar).append(HAL)
+                                i++
+                            }
+                            else -> {
+                                output.append(sanyakaChar)
+                                i++
+                            }
+                        }
                     }
                     else -> {
                         when {

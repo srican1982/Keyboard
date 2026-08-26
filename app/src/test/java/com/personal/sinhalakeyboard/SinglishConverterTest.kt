@@ -36,7 +36,8 @@ class SinglishConverterTest {
     }
 
     @Test fun halKeerima_betweenConsonants() {
-        assertEquals("$KA\u0DCA\u0DA7", c("kt")) // ක්ට
+        assertEquals("$KA\u0DCA\u0DA7\u0DCA", c("kt")) // ක්ට්
+        assertEquals("$KA\u0DCA\u0DA7", c("kta")) // ක්ට
     }
 
     @Test fun paapilla_shortU() {
@@ -110,9 +111,9 @@ class SinglishConverterTest {
     }
 
     @Test fun repaya_rBeforeConsonant() {
-        assertEquals("$KA$RA$HAL$ZWJ\u0DB8", c("karma")) // කර්‍ම
-        assertEquals("\u0DAF$RA$HAL$ZWJ\u0DB8", c("dharma")) // ධර්‍ම
-        assertEquals("\u0DC0$RA$HAL$ZWJ\u0DC1", c("varsha")) // වර්‍ශ
+        assertEquals("$KA$RA$HAL$ZWJ\u0DB8", c("krma")) // කර්‍ම
+        assertEquals("\u0DAF$RA$HAL$ZWJ\u0DB8", c("dhrma")) // ධර්‍ම
+        assertEquals("\u0DC0$RA$HAL$ZWJ\u0DC1", c("vrsha")) // වර්‍ශ
     }
 
     @Test fun rakansayaAndRepaya_distinct() {

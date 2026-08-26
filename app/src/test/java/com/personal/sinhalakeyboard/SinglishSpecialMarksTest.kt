@@ -38,10 +38,10 @@ class SinglishSpecialMarksTest {
     }
 
     @Test fun visarga_capitalH() {
-        assertEquals("\u0DB6\u0DCF$VISARGA", c("baH")) // බඃ
+        assertEquals("\u0DB6$VISARGA", c("baH")) // බඃ
     }
 
     @Test fun visarga_underscoreH() {
-        assertEquals("\u0DB6\u0DCF$VISARGA", c("ba_h")) // බඃ
+        assertEquals("\u0DB6$VISARGA", c("ba_h")) // බඃ
     }
 }

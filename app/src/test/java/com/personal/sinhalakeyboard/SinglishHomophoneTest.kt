@@ -10,7 +10,7 @@ class SinglishHomophoneTest {
 
     @Test fun thVsT_dantajaAndMurdhaja() {
         assertEquals("\u0DAD\u0DBB\u0DD4", c("tharu")) // තරු (th = ත)
-        assertEquals("\u0DA7\u0DD2\u0DBA\u0DCF", c("Tiiyaa")) // ටීයා (T = ට)
+        assertEquals("\u0DA7\u0DD3\u0DBA\u0DCF", c("Tiiyaa")) // ටීයා (T = ට)
     }
 
     @Test fun nVsN_dantajaAndMurdhaja() {
@@ -24,21 +24,25 @@ class SinglishHomophoneTest {
     }
 
     @Test fun sShVsSh_talujuAndMurdhaja() {
-        assertEquals("\u0DC3\u0DAD\u0DD2\u0DA7", c("sathuta")) // සතුට (s = ස)
-        assertEquals("\u0DC1\u0DBB\u0DD2", c("shri")) // ශ්‍රී (sh = ශ)
-        assertEquals("\u0DC0\u0DBB\u0DC2\u0DCF", c("varSaa")) // වර්ෂා (S = ෂ)
+        assertEquals("\u0DC3\u0DAD\u0DD4\u0DA7", c("sathuta")) // සතුට (s = ස)
+        assertEquals("\u0DC1$HAL$ZWJ$RA\u0DD2", c("shri")) // ශ්‍රි (sh = ශ)
+        assertEquals("\u0DC0\u0DBB$HAL\u0DC2\u0DCF", c("varSaa")) // වර්ෂා (S = ෂ)
     }
 
+    private val HAL = "\u0DCA"
+    private val ZWJ = "\u200D"
+    private val RA = "\u0DBB"
+
     @Test fun mahaprana_capitalLetters() {
-        assertEquals("\u0D9B\u0DD2\u0DBB", c("Kiira")) // ඛීර (K = ඛ)
-        assertEquals("\u0DB5\u0DC3\u0DBA", c("Palaya")) // ඵලය (P = ඵ)
+        assertEquals("\u0D9B\u0DD3\u0DBB", c("Kiira")) // ඛීර (K = ඛ)
+        assertEquals("\u0DB5\u0DBD\u0DBA", c("Palaya")) // ඵලය (P = ඵ)
         assertEquals("\u0DB7\u0DCF\u0DC1\u0DCF\u0DC0", c("Baashaava")) // භාශාව (B = භ)
         assertEquals("\u0DA1\u0DCF\u0DBA\u0DCF", c("Chaayaa")) // ඡායා (Ch = ඡ)
         assertEquals("\u0DA3\u0DCF\u0DBA", c("Jhaana")) // ඣාන (J = ඣ)
     }
 
     @Test fun mahaprana_lowercaseDigraphsStillWork() {
-        assertEquals("\u0D9B\u0DD2\u0DBB", c("khiira")) // kh = ඛ
+        assertEquals("\u0D9B\u0DD3\u0DBB", c("khiira")) // kh = ඛ
         assertEquals("\u0DB7\u0DCF\u0DC1\u0DCF\u0DC0", c("bhaashaava")) // bh = භ
     }
 
