@@ -17,18 +17,48 @@ class VoiceInputHelper(
 
     private var speechRecognizer: SpeechRecognizer? = null
     private var listening = false
+    private var continuous = false
+    private var languageTag = "en-US"
 
     fun isListening(): Boolean = listening
 
-    fun start(languageTag: String) {
+    fun isContinuous(): Boolean = continuous
+
+    fun start(languageTag: String, continuousMode: Boolean = false) {
         if (!SpeechRecognizer.isRecognitionAvailable(context)) {
             onError("Speech recognition is not available on this device")
             return
         }
-        stop()
+        this.languageTag = languageTag
+        continuous = continuousMode
+        stopRecognizerOnly()
         speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
             setRecognitionListener(this@VoiceInputHelper)
         }
+        startListeningInternal()
+    }
+
+    fun stop() {
+        continuous = false
+        stopRecognizerOnly()
+    }
+
+    private fun stopRecognizerOnly() {
+        if (!listening && speechRecognizer == null) return
+        speechRecognizer?.stopListening()
+        speechRecognizer?.cancel()
+        listening = false
+        onListeningChanged(false)
+    }
+
+    fun destroy() {
+        continuous = false
+        stopRecognizerOnly()
+        speechRecognizer?.destroy()
+        speechRecognizer = null
+    }
+
+    private fun startListeningInternal() {
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, languageTag)
@@ -40,17 +70,13 @@ class VoiceInputHelper(
         onListeningChanged(true)
     }
 
-    fun stop() {
-        if (!listening) return
-        speechRecognizer?.stopListening()
-        listening = false
-        onListeningChanged(false)
-    }
-
-    fun destroy() {
-        stop()
+    private fun restartIfContinuous() {
+        if (!continuous) return
         speechRecognizer?.destroy()
-        speechRecognizer = null
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
+            setRecognitionListener(this@VoiceInputHelper)
+        }
+        startListeningInternal()
     }
 
     override fun onReadyForSpeech(params: Bundle?) = Unit
@@ -62,11 +88,21 @@ class VoiceInputHelper(
     override fun onBufferReceived(buffer: ByteArray?) = Unit
 
     override fun onEndOfSpeech() {
-        listening = false
-        onListeningChanged(false)
+        if (!continuous) {
+            listening = false
+            onListeningChanged(false)
+        }
     }
 
     override fun onError(error: Int) {
+        if (continuous && (
+                error == SpeechRecognizer.ERROR_NO_MATCH ||
+                    error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                )
+        ) {
+            restartIfContinuous()
+            return
+        }
         listening = false
         onListeningChanged(false)
         val message = when (error) {
@@ -82,18 +118,25 @@ class VoiceInputHelper(
             else -> "Voice input failed"
         }
         if (error != SpeechRecognizer.ERROR_CLIENT) {
+            if (continuous) {
+                continuous = false
+            }
             onError(message)
         }
     }
 
     override fun onResults(results: Bundle?) {
-        listening = false
-        onListeningChanged(false)
         val text = results
             ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             ?.firstOrNull()
             ?.trim()
         if (!text.isNullOrEmpty()) onFinal(text)
+        if (continuous) {
+            restartIfContinuous()
+        } else {
+            listening = false
+            onListeningChanged(false)
+        }
     }
 
     override fun onPartialResults(partialResults: Bundle?) {

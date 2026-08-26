@@ -11,6 +11,7 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -21,6 +22,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -28,25 +30,33 @@ class KeyboardService : InputMethodService() {
 
     enum class Language { SINHALA, ENGLISH }
 
-    enum class KeyLayout { LETTERS, NUMBERS, SYMBOLS }
+    enum class KeyLayout { LETTERS, NUMBERS, SYMBOLS, EMOJI }
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val grammarFixer = GrammarFixer()
+    private val cloudSuggestionService = CloudSuggestionService()
     private val repeatHandler = Handler(Looper.getMainLooper())
     private var repeatRunnable: Runnable? = null
 
     private lateinit var singlishEngine: SinglishEngine
     private lateinit var englishSuggestions: EnglishSuggestions
+    private lateinit var nextWordPredictor: NextWordPredictor
 
     private var keyboardView: View? = null
     private var suggestionRow: LinearLayout? = null
     private var btnLang: TextView? = null
-    private var btnMic: TextView? = null
+    private var btnMic: ImageView? = null
     private var btnFix: TextView? = null
+    private var btnTonePro: TextView? = null
+    private var btnToneFriendly: TextView? = null
     private var progress: ProgressBar? = null
+    private var keyboardKeysPanel: LinearLayout? = null
+    private var emojiPanelRoot: View? = null
+    private var emojiPanel: EmojiPanel? = null
 
     private var voiceInputHelper: VoiceInputHelper? = null
     private var primarySuggestion: SuggestionCandidate? = null
+    private var englishTone = EnglishTone.PROFESSIONAL
 
     private var language = Language.SINHALA
     private var keyLayout = KeyLayout.LETTERS
@@ -54,6 +64,7 @@ class KeyboardService : InputMethodService() {
     private var sinhalaBuffer = StringBuilder()
     private var fixJob: Job? = null
     private var sinhalaSuggestionJob: Job? = null
+    private var nextWordJob: Job? = null
 
     private var activeTheme = KeyboardTheme.WHITE
     private var keyTextColor = 0xFF212121.toInt()
@@ -93,6 +104,7 @@ class KeyboardService : InputMethodService() {
         super.onCreate()
         singlishEngine = SinglishEngine(this)
         englishSuggestions = EnglishSuggestions(this)
+        nextWordPredictor = NextWordPredictor(this)
         voiceInputHelper = VoiceInputHelper(
             context = this,
             onFinal = { text -> insertVoiceText(text) },
@@ -108,7 +120,22 @@ class KeyboardService : InputMethodService() {
         btnLang = view.findViewById(R.id.btnLang)
         btnMic = view.findViewById(R.id.btnMic)
         btnFix = view.findViewById(R.id.btnFix)
+        btnTonePro = view.findViewById(R.id.btnTonePro)
+        btnToneFriendly = view.findViewById(R.id.btnToneFriendly)
         progress = view.findViewById(R.id.progress)
+        keyboardKeysPanel = view.findViewById(R.id.keyboardKeysPanel)
+        emojiPanelRoot = view.findViewById(R.id.emojiPanel)
+        englishTone = Prefs.getEnglishTone(this)
+
+        emojiPanel = EmojiPanel(this, emojiPanelRoot!!) { emoji ->
+            insertEmoji(emoji)
+        }.also { panel ->
+            panel.bind()
+            panel.setOnBackListener { showLettersLayout() }
+        }
+
+        btnTonePro?.setOnClickListener { setEnglishTone(EnglishTone.PROFESSIONAL) }
+        btnToneFriendly?.setOnClickListener { setEnglishTone(EnglishTone.FRIENDLY) }
 
         setupRepeatKey(view.findViewById(R.id.keyBackspace)) { onBackspace() }
         view.findViewById<TextView>(R.id.keySpace).setOnClickListener { onSpace() }
@@ -174,12 +201,14 @@ class KeyboardService : InputMethodService() {
         }
         btnMic?.apply {
             setBackgroundResource(btnMicBg)
-            setTextColor(0xFFFFFFFF.toInt())
+            setColorFilter(0xFFFFFFFF.toInt())
+            alpha = 1f
         }
         btnFix?.apply {
             setBackgroundResource(btnFixBg)
             setTextColor(0xFFFFFFFF.toInt())
         }
+        updateToneUi()
     }
 
     private fun applyKeyLayout() {
@@ -190,6 +219,28 @@ class KeyboardService : InputMethodService() {
             KeyLayout.LETTERS -> bindLettersLayout(view)
             KeyLayout.NUMBERS -> bindNumbersLayout(view)
             KeyLayout.SYMBOLS -> bindSymbolsLayout(view)
+            KeyLayout.EMOJI -> bindEmojiLayout(view)
+        }
+        updateEmojiVisibility()
+    }
+
+    private fun updateEmojiVisibility() {
+        val showEmoji = keyLayout == KeyLayout.EMOJI
+        emojiPanelRoot?.visibility = if (showEmoji) View.VISIBLE else View.GONE
+        val panel = keyboardKeysPanel ?: return
+        for (i in 0 until panel.childCount - 1) {
+            panel.getChildAt(i).visibility = if (showEmoji) View.GONE else View.VISIBLE
+        }
+    }
+
+    private fun bindEmojiLayout(view: View) {
+        view.findViewById<TextView>(R.id.keyComma).apply {
+            text = getString(R.string.key_abc)
+            setOnClickListener { showLettersLayout() }
+        }
+        view.findViewById<TextView>(R.id.keyNumbers).apply {
+            text = "123"
+            setOnClickListener { showNumbersLayout() }
         }
     }
 
@@ -210,8 +261,8 @@ class KeyboardService : InputMethodService() {
             setOnClickListener { showNumbersLayout() }
         }
         view.findViewById<TextView>(R.id.keyComma).apply {
-            text = ","
-            setOnClickListener { commitDirect(",") }
+            text = "😊"
+            setOnClickListener { showEmojiLayout() }
         }
         view.findViewById<TextView>(R.id.keyPeriod).apply {
             text = "."
@@ -284,6 +335,12 @@ class KeyboardService : InputMethodService() {
         }
     }
 
+    private fun showEmojiLayout() {
+        if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
+        keyLayout = KeyLayout.EMOJI
+        applyKeyLayout()
+    }
+
     private fun showLettersLayout() {
         if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
         keyLayout = KeyLayout.LETTERS
@@ -352,14 +409,20 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun onSpace() {
-        val ic = currentInputConnection
+        val ic = currentInputConnection ?: return
+        val currentWord = getCurrentWord(ic)
         if (Prefs.isAutoCorrectOnSpace(this)) {
+            if (currentWord.isEmpty() && primarySuggestion?.isNextWord == true) {
+                ic.commitText("${primarySuggestion!!.commitText} ", 1)
+                updateNextWordSuggestions()
+                return
+            }
             applyAutoCorrectBeforeBreak()
         } else if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
         }
-        ic?.commitText(" ", 1)
-        clearSuggestions()
+        ic.commitText(" ", 1)
+        updateNextWordSuggestions()
     }
 
     private fun applyAutoCorrectBeforeBreak() {
@@ -401,7 +464,13 @@ class KeyboardService : InputMethodService() {
             return
         }
         currentInputConnection?.deleteSurroundingText(1, 0)
-        if (language == Language.ENGLISH) updateEnglishSuggestions()
+        val ic = currentInputConnection ?: return
+        if (language == Language.ENGLISH) {
+            if (getCurrentWord(ic).isEmpty()) updateNextWordSuggestions()
+            else updateEnglishSuggestions()
+        } else if (sinhalaBuffer.isEmpty() && getCurrentWord(ic).isEmpty()) {
+            updateNextWordSuggestions()
+        }
     }
 
     private fun commitSinhalaWord(sinhala: String? = null) {
@@ -410,7 +479,6 @@ class KeyboardService : InputMethodService() {
         currentInputConnection?.commitText(word, 1)
         sinhalaBuffer.clear()
         clearComposingText()
-        clearSuggestions()
     }
 
     private fun commitRomanWord(roman: String) {
@@ -471,7 +539,7 @@ class KeyboardService : InputMethodService() {
         val ic = currentInputConnection ?: return
         val word = getCurrentWord(ic)
         if (word.isEmpty()) {
-            clearSuggestions()
+            updateNextWordSuggestions()
             return
         }
         englishSuggestions.suggest(word) { items ->
@@ -483,6 +551,79 @@ class KeyboardService : InputMethodService() {
         }
     }
 
+    private fun updateNextWordSuggestions() {
+        val ic = currentInputConnection ?: return
+        if (sinhalaBuffer.isNotEmpty()) return
+        val lastWord = getLastWord(ic)
+        if (lastWord.isEmpty()) {
+            clearSuggestions()
+            return
+        }
+        val sinhala = language == Language.SINHALA
+        val tone = if (sinhala) EnglishTone.PROFESSIONAL else englishTone
+        val local = nextWordPredictor.predict(lastWord, sinhala, tone)
+        if (local.isEmpty() && !Prefs.isCloudSuggestionsEnabled(this)) {
+            clearSuggestions()
+            return
+        }
+        renderSuggestions(local) { candidate ->
+            commitNextWord(candidate)
+        }
+        if (!Prefs.isCloudSuggestionsEnabled(this)) return
+        val apiKey = Prefs.getApiKey(this)
+        if (apiKey.isBlank()) return
+
+        nextWordJob?.cancel()
+        val contextSnapshot = getContextBeforeCursor(ic)
+        nextWordJob = scope.launch {
+            delay(350)
+            val liveIc = currentInputConnection ?: return@launch
+            if (getLastWord(liveIc) != lastWord || sinhalaBuffer.isNotEmpty()) return@launch
+            val cloudResult = cloudSuggestionService.predictNextWords(
+                contextText = contextSnapshot,
+                sinhala = sinhala,
+                apiKey = apiKey,
+                tone = tone,
+            )
+            val cloudWords = cloudResult.getOrNull().orEmpty()
+            if (cloudWords.isEmpty()) return@launch
+            if (getLastWord(currentInputConnection ?: return@launch) != lastWord) return@launch
+            val merged = mergeNextWordSuggestions(local, cloudWords)
+            renderSuggestions(merged) { candidate ->
+                commitNextWord(candidate)
+            }
+        }
+    }
+
+    private fun mergeNextWordSuggestions(
+        local: List<SuggestionCandidate>,
+        cloudWords: List<String>,
+    ): List<SuggestionCandidate> {
+        val seen = local.map { it.display.lowercase() }.toMutableSet()
+        val merged = local.toMutableList()
+        for (word in cloudWords) {
+            if (word.isBlank()) continue
+            val key = word.lowercase()
+            if (seen.add(key)) {
+                merged.add(
+                    SuggestionCandidate(
+                        display = word,
+                        commitText = word,
+                        isNextWord = true,
+                        isCloud = true,
+                    ),
+                )
+            }
+        }
+        return merged.take(8)
+    }
+
+    private fun commitNextWord(candidate: SuggestionCandidate) {
+        val ic = currentInputConnection ?: return
+        ic.commitText("${candidate.commitText} ", 1)
+        updateNextWordSuggestions()
+    }
+
     private fun renderSuggestions(
         items: List<SuggestionCandidate>,
         onPick: (SuggestionCandidate) -> Unit,
@@ -490,18 +631,30 @@ class KeyboardService : InputMethodService() {
         val row = suggestionRow ?: return
         row.removeAllViews()
         primarySuggestion = items.firstOrNull { !it.isRoman } ?: items.firstOrNull()
-        items.forEachIndexed { index, candidate ->
+        items.forEachIndexed { _, candidate ->
             val isPrimary = candidate == primarySuggestion
+            val label = if (candidate.isNextWord) {
+                "${getString(R.string.next_word_hint)} ${candidate.display}"
+            } else {
+                candidate.display
+            }
             val chip = TextView(this).apply {
-                text = candidate.display
+                text = label
                 textSize = if (isPrimary) 17f else 16f
                 setTextColor(
-                    if (candidate.isRoman) {
-                        romanSuggestionColor
-                    } else if (isPrimary) {
-                        if (activeTheme == KeyboardTheme.BLACK) 0xFFFFFFFF.toInt() else 0xFF1B5E20.toInt()
-                    } else {
-                        sinhalaSuggestionColor
+                    when {
+                        candidate.isCloud -> if (activeTheme == KeyboardTheme.BLACK) {
+                            0xFF90CAF9.toInt()
+                        } else {
+                            0xFF1565C0.toInt()
+                        }
+                        candidate.isRoman -> romanSuggestionColor
+                        isPrimary -> if (activeTheme == KeyboardTheme.BLACK) {
+                            0xFFFFFFFF.toInt()
+                        } else {
+                            0xFF1B5E20.toInt()
+                        }
+                        else -> sinhalaSuggestionColor
                     },
                 )
                 setPadding(24, 12, 24, 12)
@@ -517,6 +670,7 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun clearSuggestions() {
+        nextWordJob?.cancel()
         suggestionRow?.removeAllViews()
         primarySuggestion = null
     }
@@ -537,12 +691,76 @@ class KeyboardService : InputMethodService() {
             commitSinhalaWord()
         }
         val locale = if (language == Language.SINHALA) "si-LK" else "en-US"
-        helper.start(locale)
-        Toast.makeText(this, R.string.voice_listening, Toast.LENGTH_SHORT).show()
+        val continuous = Prefs.isContinuousVoice(this)
+        helper.start(locale, continuousMode = continuous)
+        Toast.makeText(
+            this,
+            if (continuous) R.string.continuous_voice_summary else R.string.voice_listening,
+            Toast.LENGTH_SHORT,
+        ).show()
     }
 
     private fun updateMicButton(listening: Boolean) {
-        btnMic?.text = if (listening) "..." else getString(R.string.key_mic)
+        val helper = voiceInputHelper
+        btnMic?.apply {
+            when {
+                listening && helper?.isContinuous() == true -> {
+                    setColorFilter(0xFFFF5252.toInt())
+                    alpha = 1f
+                }
+                listening -> {
+                    setColorFilter(0xFFFFFFFF.toInt())
+                    alpha = 0.55f
+                }
+                else -> {
+                    setColorFilter(0xFFFFFFFF.toInt())
+                    alpha = 1f
+                }
+            }
+        }
+    }
+
+    private fun insertEmoji(emoji: String) {
+        if (emoji.isEmpty()) return
+        if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
+            commitSinhalaWord()
+        }
+        currentInputConnection?.commitText(emoji, 1)
+        clearSuggestions()
+    }
+
+    private fun setEnglishTone(tone: EnglishTone) {
+        englishTone = tone
+        Prefs.setEnglishTone(this, tone)
+        updateToneUi()
+        if (language == Language.ENGLISH) {
+            val ic = currentInputConnection
+            if (ic != null && getCurrentWord(ic).isEmpty()) {
+                updateNextWordSuggestions()
+            }
+        }
+    }
+
+    private fun updateToneUi() {
+        val pro = btnTonePro ?: return
+        val friendly = btnToneFriendly ?: return
+        val proActive = englishTone == EnglishTone.PROFESSIONAL
+        pro.setBackgroundResource(
+            if (proActive) suggestionChipPrimaryBg else suggestionChipBg,
+        )
+        friendly.setBackgroundResource(
+            if (!proActive) suggestionChipPrimaryBg else suggestionChipBg,
+        )
+        val onPrimary = 0xFFFFFFFF.toInt()
+        val inactiveColor = if (activeTheme == KeyboardTheme.BLACK) {
+            0xFFB0BEC5.toInt()
+        } else {
+            0xFF616161.toInt()
+        }
+        pro.setTextColor(if (proActive) onPrimary else inactiveColor)
+        friendly.setTextColor(if (!proActive) onPrimary else inactiveColor)
+        pro.setTypeface(null, if (proActive) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+        friendly.setTypeface(null, if (!proActive) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
     }
 
     private fun insertVoiceText(text: String) {
@@ -552,7 +770,18 @@ class KeyboardService : InputMethodService() {
             clearComposingText()
         }
         ic.commitText("$text ", 1)
-        clearSuggestions()
+        updateNextWordSuggestions()
+    }
+
+    private fun getLastWord(ic: InputConnection): String {
+        val before = ic.getTextBeforeCursor(1000, 0)?.toString().orEmpty().trimEnd()
+        if (before.isEmpty()) return ""
+        val lastToken = before.substringAfterLast('\n').substringAfterLast(' ')
+        return lastToken.trimEnd { !it.isLetter() && it != '\'' }
+    }
+
+    private fun getContextBeforeCursor(ic: InputConnection): String {
+        return ic.getTextBeforeCursor(500, 0)?.toString().orEmpty()
     }
 
     private fun getCurrentWord(ic: InputConnection): String {
@@ -603,6 +832,10 @@ class KeyboardService : InputMethodService() {
             getString(R.string.mode_english)
         }
         btnFix?.visibility = if (language == Language.ENGLISH) View.VISIBLE else View.GONE
+        val showTone = language == Language.ENGLISH
+        btnTonePro?.visibility = if (showTone) View.VISIBLE else View.GONE
+        btnToneFriendly?.visibility = if (showTone) View.VISIBLE else View.GONE
+        if (showTone) updateToneUi()
         suggestionRow?.visibility = View.VISIBLE
     }
 
@@ -628,7 +861,7 @@ class KeyboardService : InputMethodService() {
 
             Toast.makeText(this@KeyboardService, R.string.fixing_grammar, Toast.LENGTH_SHORT).show()
 
-            val result = grammarFixer.fixGrammar(text, apiKey)
+            val result = grammarFixer.fixGrammar(text, apiKey, englishTone)
             progress?.visibility = View.GONE
             btnFix?.isEnabled = true
 
@@ -698,6 +931,7 @@ class KeyboardService : InputMethodService() {
         clearComposingText()
         clearSuggestions()
         keyLayout = KeyLayout.LETTERS
+        englishTone = Prefs.getEnglishTone(this)
         applyKeyLayout()
         applyTheme()
     }

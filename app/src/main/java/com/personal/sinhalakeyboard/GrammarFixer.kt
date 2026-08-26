@@ -22,7 +22,11 @@ class GrammarFixer {
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    suspend fun fixGrammar(text: String, apiKey: String): Result<String> = withContext(Dispatchers.IO) {
+    suspend fun fixGrammar(
+        text: String,
+        apiKey: String,
+        tone: EnglishTone = EnglishTone.PROFESSIONAL,
+    ): Result<String> = withContext(Dispatchers.IO) {
         if (text.isBlank()) return@withContext Result.success(text)
         if (apiKey.isBlank()) return@withContext Result.failure(IllegalStateException("API key missing"))
 
@@ -39,7 +43,8 @@ class GrammarFixer {
                                 "that may contain multiple sentences, grammar errors, typos, or unclear phrasing. " +
                                 "Read the ENTIRE message as one unified piece — understand what they mean to say, " +
                                 "then rewrite it with correct grammar, spelling, and punctuation. Improve clarity " +
-                                "and flow where helpful, but keep the same meaning, intent, and tone. " +
+                                "and flow where helpful, but keep the same meaning and intent. " +
+                                "Use a ${tone.aiDescription()} tone throughout. " +
                                 "Do NOT fix sentences one-by-one in isolation. " +
                                 "Return ONLY the improved text — no explanations, quotes, or labels."
                         )

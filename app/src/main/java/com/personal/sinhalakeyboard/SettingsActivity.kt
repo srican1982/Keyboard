@@ -41,6 +41,17 @@ class SettingsActivity : AppCompatActivity() {
 
         findViewById<SwitchMaterial>(R.id.switchAutoCorrect).isChecked =
             Prefs.isAutoCorrectOnSpace(this)
+        findViewById<SwitchMaterial>(R.id.switchCloudSuggestions).isChecked =
+            Prefs.isCloudSuggestionsEnabled(this)
+        findViewById<SwitchMaterial>(R.id.switchContinuousVoice).isChecked =
+            Prefs.isContinuousVoice(this)
+
+        val tonePro = findViewById<RadioButton>(R.id.toneProfessional)
+        val toneFriendly = findViewById<RadioButton>(R.id.toneFriendly)
+        when (Prefs.getEnglishTone(this)) {
+            EnglishTone.PROFESSIONAL -> tonePro.isChecked = true
+            EnglishTone.FRIENDLY -> toneFriendly.isChecked = true
+        }
 
         findViewById<Button>(R.id.btnMicPermission).setOnClickListener {
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
@@ -58,6 +69,19 @@ class SettingsActivity : AppCompatActivity() {
                 this,
                 findViewById<SwitchMaterial>(R.id.switchAutoCorrect).isChecked,
             )
+            Prefs.setCloudSuggestionsEnabled(
+                this,
+                findViewById<SwitchMaterial>(R.id.switchCloudSuggestions).isChecked,
+            )
+            Prefs.setContinuousVoice(
+                this,
+                findViewById<SwitchMaterial>(R.id.switchContinuousVoice).isChecked,
+            )
+            val tone = when (findViewById<RadioGroup>(R.id.toneGroup).checkedRadioButtonId) {
+                R.id.toneFriendly -> EnglishTone.FRIENDLY
+                else -> EnglishTone.PROFESSIONAL
+            }
+            Prefs.setEnglishTone(this, tone)
 
             Toast.makeText(this, R.string.api_key_saved, Toast.LENGTH_SHORT).show()
         }
