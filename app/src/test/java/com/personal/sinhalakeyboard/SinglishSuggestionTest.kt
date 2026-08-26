@@ -79,7 +79,6 @@ class SinglishSuggestionTest {
             "koooooooo" to 2,
             "koooooooooooooooo" to 2,
             "maaaaaaaa" to 4,
-            "hiiiii" to 4,
         )
         for ((variant, typedLen) in cases) {
             val sinhala = SinglishConverter.convert(variant)

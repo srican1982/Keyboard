@@ -74,7 +74,7 @@ class TypingMemory(context: Context) {
             .filter { it.key.startsWith(key) && it.key != key }
             .sortedWith(compareByDescending<Map.Entry<String, Entry>> { it.value.count }.thenBy { it.key })
             .take(limit)
-            .map { (wordKey, entry) ->
+            .map { (wordKey, _) ->
                 val display = formatEnglish(wordKey, prefix)
                 SuggestionCandidate(display, display, isPersonal = true)
             }

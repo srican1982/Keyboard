@@ -84,7 +84,7 @@ object SinhalaSuggestionRules {
             if (ch in sinhalaVowelLetters) {
                 if (ch == lastVowelLetter) {
                     vowelLetterRun++
-                    if (vowelLetterRun >= 3) return false
+                    if (vowelLetterRun >= 2) return false
                 } else {
                     vowelLetterRun = 1
                     lastVowelLetter = ch

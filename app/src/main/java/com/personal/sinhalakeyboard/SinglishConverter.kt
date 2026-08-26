@@ -401,7 +401,7 @@ object SinglishConverter {
                         output.append(consonantChar).append(HAL)
                         i++
                     }
-                    next != null && specialMap.containsKey(next) -> {
+                    specialMap.containsKey(next) -> {
                         output.append(consonantChar)
                         i++
                     }
