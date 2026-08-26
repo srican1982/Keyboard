@@ -190,8 +190,9 @@ object SinglishConverter {
             val current = phonemes[i]
             val next = phonemes.getOrNull(i + 1)
 
-            specialMap[current]?.let {
-                output.append(it)
+            val special = specialMap[current]
+            if (special != null) {
+                output.append(special)
                 i++
                 continue
             }

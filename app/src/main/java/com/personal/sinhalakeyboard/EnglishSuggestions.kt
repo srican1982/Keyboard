@@ -1,7 +1,6 @@
 package com.personal.sinhalakeyboard
 
 import android.content.Context
-import android.os.Build
 import android.provider.UserDictionary
 import android.view.textservice.SentenceSuggestionsInfo
 import android.view.textservice.SuggestionsInfo
@@ -13,8 +12,7 @@ import java.util.Locale
  * English word suggestions from the device spell checker and personal dictionary —
  * no hardcoded word list.
  */
-class EnglishSuggestions(context: Context) :
-    TextServicesManager.SessionListener {
+class EnglishSuggestions(context: Context) {
 
     private val appContext = context.applicationContext
     private val textServicesManager =
@@ -26,13 +24,6 @@ class EnglishSuggestions(context: Context) :
     private var pendingUserWords: List<SuggestionCandidate> = emptyList()
 
     init {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            textServicesManager?.setSpellCheckerSessionListener(this)
-        }
-        openSession()
-    }
-
-    override fun onServiceConnected() {
         openSession()
     }
 
@@ -56,9 +47,6 @@ class EnglishSuggestions(context: Context) :
     }
 
     fun close() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            textServicesManager?.setSpellCheckerSessionListener(null)
-        }
         session?.close()
         session = null
         pendingCallback = null
