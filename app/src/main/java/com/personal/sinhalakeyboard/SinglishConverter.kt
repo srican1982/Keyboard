@@ -5,6 +5,18 @@ package com.personal.sinhalakeyboard
  *
  * Based on [@siyabasa/singlish](https://github.com/remeinium/singlish) (Apache-2.0)
  * with Google/nongnu-style ae/aee (ඇ/ඈ) and t/th, d/dh (ට/ත, ඩ/ද).
+ *
+ * Pillam (පිල්ල) — vowel signs on consonants:
+ * | Singlish | Pillam              | Example   |
+ * |----------|---------------------|-----------|
+ * | aa       | ඇලපිල්ල (Alepilla)  | kaa → කා  |
+ * | i / ii   | ඉස්පිල්ල (Ispilla)   | ki → කි   |
+ * | e / ee   | කොම්බුව (Kombuwa)    | ke → කෙ   |
+ * | (hal)    | හල් කිරීම           | k → ක්    |
+ * | u / uu   | පාපිල්ල (Paapilla)  | ku → කු   |
+ * | ae / A   | ඇදය (Adaya)         | kae → කැ  |
+ * | aee / AA | දිග ඇදය             | kaee → කෑ|
+ * | R / Ru   | ගැට්ට පිල්ල        | kR → කෘ  |
  */
 object SinglishConverter {
 
@@ -39,6 +51,7 @@ object SinglishConverter {
         "Lu" to "SPECIAL_LU",
         "kh" to "KH",
         "gh" to "GH",
+        "Ch" to "ASPIRATED_CH",
         "ch" to "CH",
         "ph" to "PH",
         "bh" to "BH",
@@ -47,10 +60,19 @@ object SinglishConverter {
         "Sh" to "RETROFLEX_S",
         "sh" to "SH",
         "ng" to "N_G",
+        "mb" to "SANYAKA_BA",
+        "Nd" to "SANYAKA_DA",
+        "nD" to "SANYAKA_DA",
         "nd" to "SANYAKA_DHA",
+        "_h" to "VISARGA",
         "Th" to "RETROFLEX_TH",
         "Dh" to "RETROFLEX_DH",
         "Ba" to "SANYAKA_BA",
+        "K" to "KH",
+        "G" to "GH",
+        "P" to "PH",
+        "B" to "BH",
+        "J" to "ASPIRATED_J",
         "a" to "V_A",
         "A" to "V_AE",
         "i" to "V_I",
@@ -72,7 +94,6 @@ object SinglishConverter {
         "N" to "RETROFLEX_N",
         "p" to "P",
         "b" to "B_LOWER",
-        "B" to "SANYAKA_B",
         "m" to "M",
         "y" to "Y",
         "r" to "R_CONS",
@@ -111,7 +132,7 @@ object SinglishConverter {
 
     private val consonantMap = mapOf(
         "K" to "\u0D9A", "KH" to "\u0D9B", "G" to "\u0D9C", "GH" to "\u0D9D",
-        "CH" to "\u0DA0", "ASPIRATED_CH" to "\u0DA1", "J" to "\u0DA2",
+        "CH" to "\u0DA0", "ASPIRATED_CH" to "\u0DA1", "J" to "\u0DA2", "ASPIRATED_J" to "\u0DA3",
         "RETROFLEX_T" to "\u0DA7", "RETROFLEX_TH" to "\u0DA8", "RETROFLEX_TH_SINGLE" to "\u0DA8",
         "RETROFLEX_D" to "\u0DA9", "RETROFLEX_DH" to "\u0DAA", "RETROFLEX_DH_SINGLE" to "\u0DAA",
         "RETROFLEX_N" to "\u0DAB", "TH" to "\u0DAD", "ASPIRATED_TH" to "\u0DAE",
@@ -142,6 +163,7 @@ object SinglishConverter {
     private val vowelModifier = mapOf(
         "V_AA" to "\u0DCF", "V_AE" to "\u0DD0", "V_AE_LONG" to "\u0DD1",
         "V_I" to "\u0DD2", "V_II" to "\u0DD3", "V_U" to "\u0DD4", "V_UU" to "\u0DD6",
+        "V_RU" to "\u0DD8", "V_RU_LONG" to "\u0DF2",
         "V_E" to "\u0DD9", "V_EE" to "\u0DDA", "V_AI" to "\u0DDB",
         "V_O" to "\u0DDC", "V_OO" to "\u0DDF", "V_AU" to "\u0DE0",
     )
@@ -202,23 +224,26 @@ object SinglishConverter {
             }
 
             if (current == "N_G") {
-                val nChar = consonantMap.getValue("N")
-                val gChar = consonantMap.getValue("G")
                 when {
+                    next == "G" -> {
+                        output.append(sanyakaMap.getValue("SANYAKA_GA"))
+                        i += 2
+                    }
                     next != null && isVowelModifier(next) -> {
-                        output.append(nChar).append(HAL).append(gChar).append(vowelModifier.getValue(next))
+                        output.append(sanyakaMap.getValue("SANYAKA_GA"))
+                            .append(vowelModifier.getValue(next))
                         i += 2
                     }
                     next != null && isInherentA(next) -> {
-                        output.append(nChar).append(HAL).append(gChar)
+                        output.append(sanyakaMap.getValue("SANYAKA_GA"))
                         i += 2
                     }
-                    next != null && isConsonant(next) -> {
-                        output.append(nChar).append(HAL).append(gChar).append(HAL)
+                    next != null && (isConsonant(next) || isSanyaka(next)) -> {
+                        output.append(specialMap.getValue("ANUSVARA"))
                         i++
                     }
                     else -> {
-                        output.append(nChar).append(HAL).append(gChar).append(HAL)
+                        output.append(specialMap.getValue("ANUSVARA"))
                         i++
                     }
                 }
@@ -286,6 +311,13 @@ object SinglishConverter {
                 val consonantChar = consonantMap.getValue(current)
                 val afterConjunct = phonemes.getOrNull(i + 2)
 
+                // Repaya (ර්‍): C1 + r + C2 with no vowel between r and C2 — e.g. karma, dharma
+                if (next == "R_CONS" && afterConjunct != null && isRepayaTarget(afterConjunct)) {
+                    output.append(consonantChar)
+                    i = writeRepayaCluster(output, phonemes, i + 1)
+                    continue
+                }
+
                 if (next != null && isConjunctable(next)) {
                     val conjunctChar = consonantMap.getValue(next)
                     when {
@@ -352,6 +384,42 @@ object SinglishConverter {
         }
         return output.toString()
     }
+
+    /** Repaya cluster: ර + hal + zwj + C2 (+ optional vowel / hal). */
+    private fun writeRepayaCluster(output: StringBuilder, phonemes: List<String>, rIndex: Int): Int {
+        val c2Token = phonemes.getOrNull(rIndex + 1) ?: return rIndex + 1
+        val c2Char = clusterConsonantChar(c2Token) ?: return rIndex + 1
+        val afterC2 = phonemes.getOrNull(rIndex + 2)
+        val ra = consonantMap.getValue("R_CONS")
+
+        output.append(ra).append(HAL).append(ZWJ).append(c2Char)
+
+        return when {
+            afterC2 != null && isVowelModifier(afterC2) -> {
+                output.append(vowelModifier.getValue(afterC2))
+                rIndex + 3
+            }
+            afterC2 != null && isInherentA(afterC2) -> rIndex + 3
+            afterC2 != null && (isConsonant(afterC2) || isSanyaka(afterC2) || afterC2 == "N_G") -> {
+                output.append(HAL)
+                rIndex + 2
+            }
+            afterC2 == null || isWordBoundary(afterC2) -> {
+                output.append(HAL)
+                rIndex + 2
+            }
+            else -> rIndex + 2
+        }
+    }
+
+    private fun clusterConsonantChar(token: String): String? = when {
+        isConsonant(token) -> consonantMap[token]
+        isSanyaka(token) -> sanyakaMap[token]
+        else -> null
+    }
+
+    private fun isRepayaTarget(token: String): Boolean =
+        isConsonant(token) || isSanyaka(token)
 
     private fun isConsonant(token: String) = token in consonantSet
     private fun isSanyaka(token: String) = token in sanyakaSet

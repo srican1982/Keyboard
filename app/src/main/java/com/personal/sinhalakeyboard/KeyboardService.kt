@@ -67,6 +67,7 @@ class KeyboardService : InputMethodService() {
     private var fixJob: Job? = null
     private var sinhalaSuggestionJob: Job? = null
     private var nextWordJob: Job? = null
+    private var englishCloudJob: Job? = null
 
     private var activeTheme = KeyboardTheme.WHITE
     private var keyTextColor = 0xFF212121.toInt()
@@ -413,7 +414,8 @@ class KeyboardService : InputMethodService() {
             return
         }
 
-        sinhalaBuffer.append(ch.lowercase())
+        sinhalaBuffer.append(ch)
+        if (shiftOn) toggleShift()
         updateComposingText()
         updateSinhalaSuggestions()
     }
@@ -559,14 +561,45 @@ class KeyboardService : InputMethodService() {
         val ic = currentInputConnection ?: return
         val word = getCurrentWord(ic)
         if (word.isEmpty()) {
+            englishCloudJob?.cancel()
             updateNextWordSuggestions()
             return
         }
+        englishCloudJob?.cancel()
         englishSuggestions.suggest(word) { items ->
             val liveIc = currentInputConnection ?: return@suggest
             if (getCurrentWord(liveIc) != word) return@suggest
             renderSuggestions(items) { candidate ->
                 replaceCurrentWord(liveIc, word, candidate.commitText)
+            }
+            fetchEnglishCloudWordCompletions(word, items)
+        }
+    }
+
+    private fun fetchEnglishCloudWordCompletions(
+        partialWord: String,
+        localItems: List<SuggestionCandidate>,
+    ) {
+        if (language != Language.ENGLISH || !Prefs.isCloudSuggestionsEnabled(this)) return
+        val apiKey = Prefs.getApiKey(this)
+        if (apiKey.isBlank() || partialWord.length < 2) return
+
+        englishCloudJob = scope.launch {
+            delay(400)
+            val ic = currentInputConnection ?: return@launch
+            if (getCurrentWord(ic) != partialWord) return@launch
+            val cloudResult = cloudSuggestionService.predictWordCompletions(
+                contextText = getContextBeforeCursor(ic),
+                partialWord = partialWord,
+                apiKey = apiKey,
+                tone = englishTone,
+            )
+            val cloudWords = cloudResult.getOrNull().orEmpty()
+            if (cloudWords.isEmpty()) return@launch
+            if (getCurrentWord(currentInputConnection ?: return@launch) != partialWord) return@launch
+            val merged = mergeCloudSuggestions(localItems, cloudWords, partialWord, isNextWord = false)
+            renderSuggestions(merged) { candidate ->
+                replaceCurrentWord(currentInputConnection ?: return@renderSuggestions, partialWord, candidate.commitText)
             }
         }
     }
@@ -599,43 +632,66 @@ class KeyboardService : InputMethodService() {
             delay(350)
             val liveIc = currentInputConnection ?: return@launch
             if (getLastWord(liveIc) != lastWord || sinhalaBuffer.isNotEmpty()) return@launch
-            val cloudResult = cloudSuggestionService.predictNextWords(
-                contextText = contextSnapshot,
-                sinhala = sinhala,
-                apiKey = apiKey,
-                tone = tone,
-            )
+            val cloudResult = if (sinhala) {
+                cloudSuggestionService.predictNextWords(
+                    contextText = contextSnapshot,
+                    sinhala = true,
+                    apiKey = apiKey,
+                    tone = tone,
+                )
+            } else {
+                cloudSuggestionService.predictNextCompletions(
+                    contextText = contextSnapshot,
+                    apiKey = apiKey,
+                    tone = tone,
+                )
+            }
             val cloudWords = cloudResult.getOrNull().orEmpty()
             if (cloudWords.isEmpty()) return@launch
             if (getLastWord(currentInputConnection ?: return@launch) != lastWord) return@launch
-            val merged = mergeNextWordSuggestions(local, cloudWords)
+            val merged = mergeCloudSuggestions(local, cloudWords, prefixHint = null, isNextWord = true)
             renderSuggestions(merged) { candidate ->
                 commitNextWord(candidate)
             }
         }
     }
 
-    private fun mergeNextWordSuggestions(
+    private fun mergeCloudSuggestions(
         local: List<SuggestionCandidate>,
-        cloudWords: List<String>,
+        cloudItems: List<String>,
+        prefixHint: String?,
+        isNextWord: Boolean,
     ): List<SuggestionCandidate> {
-        val seen = local.map { it.display.lowercase() }.toMutableSet()
+        val seen = local.map { it.commitText.lowercase() }.toMutableSet()
         val merged = local.toMutableList()
-        for (word in cloudWords) {
-            if (word.isBlank()) continue
-            val key = word.lowercase()
-            if (seen.add(key)) {
-                merged.add(
-                    SuggestionCandidate(
-                        display = word,
-                        commitText = word,
-                        isNextWord = true,
-                        isCloud = true,
-                    ),
-                )
-            }
+        for (raw in cloudItems) {
+            val text = raw.trim()
+            if (text.isBlank()) continue
+            val commit = formatCloudSuggestion(text, prefixHint)
+            if (!seen.add(commit.lowercase())) continue
+            merged.add(
+                SuggestionCandidate(
+                    display = truncateSuggestionDisplay(commit),
+                    commitText = commit,
+                    isNextWord = isNextWord,
+                    isCloud = true,
+                ),
+            )
+            if (merged.size >= 8) break
         }
-        return merged.take(8)
+        return merged
+    }
+
+    private fun formatCloudSuggestion(text: String, prefixHint: String?): String {
+        if (prefixHint.isNullOrEmpty()) return text
+        return text.replaceFirstChar { c ->
+            if (prefixHint.firstOrNull()?.isUpperCase() == true) c.uppercaseChar() else c
+        }
+    }
+
+    private fun truncateSuggestionDisplay(text: String, maxLen: Int = 48): String {
+        if (text.length <= maxLen) return text
+        return text.take(maxLen - 1).trimEnd() + "…"
     }
 
     private fun commitNextWord(candidate: SuggestionCandidate) {
@@ -655,6 +711,8 @@ class KeyboardService : InputMethodService() {
             val chip = TextView(this).apply {
                 text = candidate.display
                 textSize = 15f
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
                 setTextColor(
                     when {
                         candidate.isPersonal -> if (activeTheme == KeyboardTheme.BLACK) {
@@ -688,6 +746,7 @@ class KeyboardService : InputMethodService() {
 
     private fun clearSuggestions() {
         nextWordJob?.cancel()
+        englishCloudJob?.cancel()
         suggestionRow?.removeAllViews()
     }
 

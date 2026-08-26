@@ -78,7 +78,7 @@ class SinglishEngine(
         if (ruleOutput.isNotEmpty()) {
             results.add(SuggestionCandidate(ruleOutput, ruleOutput))
         }
-        for (variant in consonantAmbiguityVariants(p) + vowelAmbiguityVariants(p)) {
+        for (variant in consonantAmbiguityVariants(p) + homophoneAmbiguityVariants(p) + vowelAmbiguityVariants(p)) {
             val sinhala = SinglishConverter.convert(variant)
             if (sinhala.isNotEmpty() && sinhala != ruleOutput) {
                 results.add(SuggestionCandidate(sinhala, sinhala))
@@ -132,6 +132,47 @@ class SinglishEngine(
         return variants
     }
 
+    /** n/N, l/L, k/K, sh/Sh/s/S, ch/Ch, j/J and other case-pair toggles for suggestions. */
+    private fun homophoneAmbiguityVariants(word: String): Set<String> {
+        val variants = linkedSetOf<String>()
+        val pairs = listOf(
+            "th" to "T", "T" to "th",
+            "n" to "N", "N" to "n",
+            "l" to "L", "L" to "l",
+            "kh" to "K", "K" to "kh",
+            "gh" to "G", "G" to "gh",
+            "ph" to "P", "P" to "ph",
+            "bh" to "B", "B" to "bh",
+            "ch" to "Ch", "Ch" to "ch",
+            "Sh" to "sh", "sh" to "Sh",
+        )
+        for ((from, to) in pairs) {
+            if (word.contains(from)) {
+                variants.add(word.replace(from, to))
+            }
+        }
+        var i = 0
+        while (i < word.length) {
+            if (word[i] == 'j' && (i + 1 >= word.length || word[i + 1] != 'h')) {
+                variants.add(word.substring(0, i) + "J" + word.substring(i + 1))
+                i += 1
+            } else if (word[i] == 'J' && (i + 1 >= word.length || word[i + 1] != 'h')) {
+                variants.add(word.substring(0, i) + "j" + word.substring(i + 1))
+                i += 1
+            } else if (word[i] == 's' && (i + 1 >= word.length || !word.regionMatches(i + 1, "h", 0, 1, true))) {
+                variants.add(word.substring(0, i) + "S" + word.substring(i + 1))
+                i += 1
+            } else if (word[i] == 'S' && (i + 1 >= word.length || !word.regionMatches(i + 1, "h", 0, 1, true))) {
+                variants.add(word.substring(0, i) + "s" + word.substring(i + 1))
+                i += 1
+            } else {
+                i += 1
+            }
+        }
+        variants.remove(word)
+        return variants
+    }
+
     /** she→shee (ශෙ vs ශේ) and other short/long vowel toggles after sh/s clusters. */
     private fun vowelAmbiguityVariants(word: String): Set<String> {
         val variants = linkedSetOf<String>()
@@ -140,6 +181,20 @@ class SinglishEngine(
         }
         if (word.endsWith("ee") && word.length > 2) {
             variants.add(word.dropLast(2) + "e")
+        }
+        if (word.endsWith("ae") && word.length > 2) {
+            variants.add(word.dropLast(2) + "A")
+            variants.add(word.dropLast(2) + "aee")
+        }
+        if (word.endsWith("A") && word.length > 1) {
+            variants.add(word.dropLast(1) + "ae")
+        }
+        if (word.endsWith("aee") && word.length > 3) {
+            variants.add(word.dropLast(3) + "AA")
+            variants.add(word.dropLast(3) + "ae")
+        }
+        if (word.endsWith("AA") && word.length > 2) {
+            variants.add(word.dropLast(2) + "aee")
         }
         variants.remove(word)
         return variants

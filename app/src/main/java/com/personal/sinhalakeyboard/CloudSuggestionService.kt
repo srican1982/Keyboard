@@ -10,7 +10,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
 
-/** Cloud next-word suggestions via OpenRouter (optional, needs API key). */
+/** Cloud AI suggestions via OpenRouter (optional, needs API key). */
 class CloudSuggestionService {
 
     private val client = OkHttpClient.Builder()
@@ -28,27 +28,98 @@ class CloudSuggestionService {
         if (contextText.isBlank() || apiKey.isBlank()) {
             return@withContext Result.success(emptyList())
         }
-        try {
-            val lang = if (sinhala) "Sinhala" else "English"
-            val toneHint = if (sinhala) "" else " Use ${tone.aiDescription()}."
+        val lang = if (sinhala) "Sinhala" else "English"
+        val toneHint = if (sinhala) "" else " Use ${tone.aiDescription()}."
+        val system = "You predict the next word(s) someone is typing in $lang.$toneHint " +
+            "Given the message text so far, return ONLY a JSON array of up to " +
+            "$limit single words (or short phrases max 2 words) they are most " +
+            "likely to type next. Example: [\"am\", \"will\", \"can\"]. " +
+            "No explanation, no markdown."
+        callOpenRouter(
+            apiKey = apiKey,
+            systemPrompt = system,
+            userContent = contextText.takeLast(200),
+            maxTokens = 120,
+            limit = limit,
+        )
+    }
+
+    /** Complete the partial word at the end of English text (context-aware). */
+    suspend fun predictWordCompletions(
+        contextText: String,
+        partialWord: String,
+        apiKey: String,
+        tone: EnglishTone = EnglishTone.PROFESSIONAL,
+        limit: Int = 5,
+    ): Result<List<String>> = withContext(Dispatchers.IO) {
+        if (partialWord.isBlank() || apiKey.isBlank()) {
+            return@withContext Result.success(emptyList())
+        }
+        val system = "You complete English words someone is typing. Use ${tone.aiDescription()}. " +
+            "Given the message so far and the partial word they are typing, return ONLY a JSON " +
+            "array of up to $limit complete words they most likely mean. Prefer words that start " +
+            "with the same letters as the partial word. Include context-aware corrections when " +
+            "the partial word is a typo (e.g. \"teh\" → \"the\"). Example: [\"hello\", \"help\"]. " +
+            "No explanation, no markdown."
+        val user = buildString {
+            append(contextText.takeLast(250))
+            append("\n\nPartial word being typed: \"")
+            append(partialWord)
+            append('"')
+        }
+        callOpenRouter(
+            apiKey = apiKey,
+            systemPrompt = system,
+            userContent = user,
+            maxTokens = 100,
+            limit = limit,
+        )
+    }
+
+    /** Next words, phrases, and short sentence continuations for English. */
+    suspend fun predictNextCompletions(
+        contextText: String,
+        apiKey: String,
+        tone: EnglishTone = EnglishTone.PROFESSIONAL,
+        limit: Int = 6,
+    ): Result<List<String>> = withContext(Dispatchers.IO) {
+        if (contextText.isBlank() || apiKey.isBlank()) {
+            return@withContext Result.success(emptyList())
+        }
+        val system = "You predict what someone will type next in English. Use ${tone.aiDescription()}. " +
+            "Given the message text so far, return ONLY a JSON array of up to $limit suggestions " +
+            "mixing: single next words, natural short phrases (2–5 words), and brief sentence " +
+            "continuations (up to about 12 words). Order by likelihood. Examples: " +
+            "[\"am\", \"looking forward to\", \"Thank you for your message\"]. " +
+            "No explanation, no markdown."
+        callOpenRouter(
+            apiKey = apiKey,
+            systemPrompt = system,
+            userContent = contextText.takeLast(300),
+            maxTokens = 180,
+            limit = limit,
+        )
+    }
+
+    private fun callOpenRouter(
+        apiKey: String,
+        systemPrompt: String,
+        userContent: String,
+        maxTokens: Int,
+        limit: Int,
+    ): Result<List<String>> {
+        return try {
             val body = JSONObject().apply {
                 put("model", GrammarFixer.MODEL)
-                put("max_tokens", 120)
+                put("max_tokens", maxTokens)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "system")
-                        put(
-                            "content",
-                            "You predict the next word(s) someone is typing in $lang.$toneHint " +
-                                "Given the message text so far, return ONLY a JSON array of up to " +
-                                "$limit single words (or short phrases max 2 words) they are most " +
-                                "likely to type next. Example: [\"am\", \"will\", \"can\"]. " +
-                                "No explanation, no markdown.",
-                        )
+                        put("content", systemPrompt)
                     })
                     put(JSONObject().apply {
                         put("role", "user")
-                        put("content", contextText.takeLast(200))
+                        put("content", userContent)
                     })
                 })
             }
@@ -65,9 +136,7 @@ class CloudSuggestionService {
             client.newCall(request).execute().use { response ->
                 val responseBody = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    return@withContext Result.failure(
-                        IllegalStateException("OpenRouter ${response.code}"),
-                    )
+                    return Result.failure(IllegalStateException("OpenRouter ${response.code}"))
                 }
                 val content = JSONObject(responseBody)
                     .getJSONArray("choices")
