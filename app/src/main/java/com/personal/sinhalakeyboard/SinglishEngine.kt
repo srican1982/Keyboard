@@ -67,14 +67,22 @@ class SinglishEngine(context: Context) {
                 if (results.size >= limit) return results.take(limit).toList()
             }
 
-        // Rule-based output of what was typed + spelling variants
+        // Rule-based output + ambiguous consonant variants (sh/ශ vs Sh/ෂ, etc.)
         val ruleOutput = SinglishConverter.convert(p)
         if (ruleOutput.isNotEmpty()) {
             results.add(SuggestionCandidate(ruleOutput, ruleOutput))
         }
+        for (variant in consonantAmbiguityVariants(p) + vowelAmbiguityVariants(p)) {
+            val sinhala = SinglishConverter.convert(variant)
+            if (sinhala.isNotEmpty() && sinhala != ruleOutput) {
+                results.add(SuggestionCandidate(sinhala, sinhala))
+            }
+        }
         for (variant in romanVariants(lower)) {
             val sinhala = SinglishConverter.convert(variant)
-            if (sinhala.isNotEmpty()) results.add(SuggestionCandidate(sinhala, sinhala))
+            if (sinhala.isNotEmpty() && sinhala != ruleOutput) {
+                results.add(SuggestionCandidate(sinhala, sinhala))
+            }
         }
 
         // Roman / Singlish keep-as-typed option
@@ -95,6 +103,42 @@ class SinglishEngine(context: Context) {
         return false
     }
 
+    /** sh→Sh (ශ vs ෂ), s→S, and similar Singlish ambiguities. */
+    private fun consonantAmbiguityVariants(word: String): Set<String> {
+        val variants = linkedSetOf<String>()
+        var i = 0
+        while (i < word.length) {
+            when {
+                word.regionMatches(i, "sh", 0, 2, ignoreCase = true) -> {
+                    variants.add(word.substring(0, i) + "Sh" + word.substring(i + 2))
+                    variants.add(word.substring(0, i) + "sh" + word.substring(i + 2))
+                    i += 2
+                }
+                word[i] == 's' && (i + 1 >= word.length || !word.regionMatches(i + 1, "h", 0, 1, true)) -> {
+                    variants.add(word.substring(0, i) + "S" + word.substring(i + 1))
+                    variants.add(word.substring(0, i) + "s" + word.substring(i + 1))
+                    i += 1
+                }
+                else -> i += 1
+            }
+        }
+        variants.remove(word)
+        return variants
+    }
+
+    /** she→shee (ශෙ vs ශේ) and other short/long vowel toggles after sh/s clusters. */
+    private fun vowelAmbiguityVariants(word: String): Set<String> {
+        val variants = linkedSetOf<String>()
+        if (word.endsWith("e") && !word.endsWith("ee") && word.length > 1) {
+            variants.add(word.dropLast(1) + "ee")
+        }
+        if (word.endsWith("ee") && word.length > 2) {
+            variants.add(word.dropLast(2) + "e")
+        }
+        variants.remove(word)
+        return variants
+    }
+
     private fun romanVariants(word: String): Set<String> {
         val variants = linkedSetOf(word)
         val replacements = listOf(
@@ -105,9 +149,7 @@ class SinglishEngine(context: Context) {
             "ii" to "i", "i" to "ii",
             "oo" to "o", "o" to "oo",
             "uu" to "u", "u" to "uu",
-            "th" to "t", "t" to "th",
-            "dh" to "d", "d" to "dh",
-            "sh" to "s", "ch" to "c",
+            "ch" to "c",
             "ph" to "f", "kh" to "k",
         )
         val queue = ArrayDeque<String>()

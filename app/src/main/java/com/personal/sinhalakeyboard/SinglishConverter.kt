@@ -4,7 +4,7 @@ package com.personal.sinhalakeyboard
  * Singlish → Sinhala transliteration (Helakuru + Google Input Tools vowels).
  *
  * Based on [@siyabasa/singlish](https://github.com/remeinium/singlish) (Apache-2.0)
- * with Google/nongnu-style ae/aee (ඇ/ඈ) and dental t/d defaults.
+ * with Google/nongnu-style ae/aee (ඇ/ඈ) and t/th, d/dh (ට/ත, ඩ/ද).
  */
 object SinglishConverter {
 
@@ -63,8 +63,8 @@ object SinglishConverter {
         "k" to "K",
         "g" to "G",
         "j" to "J",
-        "t" to "TH",
-        "d" to "DH",
+        "t" to "RETROFLEX_T",
+        "d" to "RETROFLEX_D",
         "T" to "RETROFLEX_T",
         "D" to "RETROFLEX_D",
         "n" to "N",
