@@ -59,6 +59,19 @@ class TypingMemory(context: Context) {
         saveAsync()
     }
 
+    /** User explicitly saved a word (+ Add word) — boosted so it ranks high in suggestions. */
+    fun saveCustomWord(roman: String, output: String) {
+        val key = roman.trim().lowercase()
+        val value = output.trim()
+        if (key.length < 2 || value.isEmpty()) return
+        if (!SinhalaSuggestionRules.isReasonableRomanKey(key)) return
+        val romanOnly = !containsSinhalaScript(value)
+        if (!romanOnly && !SinhalaSuggestionRules.isReasonableSinhalaSuggestion(value, key.length)) return
+        bump(sinhalaByRoman, key, if (romanOnly) key else value)
+        sinhalaByRoman[key]?.count = (sinhalaByRoman[key]?.count ?: 1) + 8
+        saveAsync()
+    }
+
     fun sinhalaSuggestions(prefix: String, limit: Int = 4): List<SuggestionCandidate> {
         val key = prefix.trim().lowercase()
         if (key.isEmpty()) return emptyList()
@@ -191,11 +204,11 @@ class TypingMemory(context: Context) {
                             val roman = parts[1]
                             val sinhala = parts[2]
                             val count = parts[3].toIntOrNull() ?: 1
-                            if (SinhalaSuggestionRules.isReasonableRomanKey(roman) &&
+                            if (!SinhalaSuggestionRules.isReasonableRomanKey(roman)) return@forEach
+                            val romanOnly = sinhala == roman
+                            val ok = romanOnly ||
                                 SinhalaSuggestionRules.isReasonableSinhalaSuggestion(sinhala, roman.length)
-                            ) {
-                                sinhalaByRoman[roman] = Entry(sinhala, count)
-                            }
+                            if (ok) sinhalaByRoman[roman] = Entry(sinhala, count)
                         }
                         "E" -> if (parts.size >= 3) {
                             englishWords[parts[1]] = Entry(parts[1], parts[2].toIntOrNull() ?: 1)

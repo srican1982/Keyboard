@@ -72,6 +72,7 @@ class KeyboardService : InputMethodService() {
     private var keyLayout = KeyLayout.LETTERS
     private var shiftOn = false
     private var sinhalaBuffer = StringBuilder()
+    private var addWordMode = false
     private var fixJob: Job? = null
     private var translateJob: Job? = null
     private var sinhalaSuggestionJob: Job? = null
@@ -478,6 +479,10 @@ class KeyboardService : InputMethodService() {
     private fun onSpace() {
         hapticKey()
         val ic = currentInputConnection ?: return
+        if (language == Language.SINHALA && addWordMode) {
+            finishAddWord()
+            return
+        }
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
         } else if (language == Language.ENGLISH) {
@@ -516,6 +521,11 @@ class KeyboardService : InputMethodService() {
 
     private fun refreshAfterBackspace() {
         if (language == Language.SINHALA) {
+            if (addWordMode && sinhalaBuffer.isEmpty()) {
+                addWordMode = false
+                clearSuggestions()
+                return
+            }
             if (sinhalaBuffer.isNotEmpty()) {
                 updateSinhalaSuggestions()
             } else {
@@ -622,21 +632,70 @@ class KeyboardService : InputMethodService() {
             }
             if (sinhalaBuffer.toString() != typed) return@launch
             val withActions = items.toMutableList().apply {
-                add(
-                    SuggestionCandidate(
-                        display = getString(R.string.suggestion_keep_typed, typed),
-                        commitText = typed,
-                        isSinglishRoman = true,
-                        isAction = true,
-                    ),
-                )
+                if (!addWordMode) {
+                    add(
+                        SuggestionCandidate(
+                            display = getString(R.string.suggestion_add_word),
+                            commitText = "",
+                            isAction = true,
+                            isAddWord = true,
+                        ),
+                    )
+                }
             }
             renderSuggestions(withActions) { pickSinhalaSuggestion(it) }
         }
     }
 
+    private fun startAddWordMode() {
+        addWordMode = true
+        sinhalaBuffer.clear()
+        clearComposingText()
+        clearSuggestions()
+        Toast.makeText(this, R.string.add_word_hint, Toast.LENGTH_LONG).show()
+    }
+
+    private fun finishAddWord() {
+        val roman = sinhalaBuffer.toString().trim()
+        addWordMode = false
+        if (roman.length < 2) {
+            sinhalaBuffer.clear()
+            clearComposingText()
+            clearSuggestions()
+            currentInputConnection?.commitText(" ", 1)
+            return
+        }
+        val sinhala = singlishEngine.transliterate(roman)
+        typingMemory.saveCustomWord(roman, sinhala)
+        Toast.makeText(this, R.string.word_saved, Toast.LENGTH_SHORT).show()
+        commitSinhalaWord(sinhala, trailingSpace = true)
+        clearSuggestions()
+    }
+
     private fun pickSinhalaSuggestion(candidate: SuggestionCandidate) {
         when {
+            candidate.isAddWord -> startAddWordMode()
+            addWordMode -> {
+                val roman = sinhalaBuffer.toString().trim()
+                addWordMode = false
+                when {
+                    candidate.isSinglishRoman || candidate.isRoman -> {
+                        if (roman.isNotEmpty()) {
+                            typingMemory.saveCustomWord(roman, candidate.commitText)
+                            Toast.makeText(this, R.string.word_saved, Toast.LENGTH_SHORT).show()
+                        }
+                        commitRomanWord(candidate.commitText, trailingSpace = true)
+                    }
+                    else -> {
+                        if (roman.isNotEmpty()) {
+                            typingMemory.saveCustomWord(roman, candidate.commitText)
+                            Toast.makeText(this, R.string.word_saved, Toast.LENGTH_SHORT).show()
+                        }
+                        commitSinhalaWord(candidate.commitText, trailingSpace = true)
+                        clearSuggestions()
+                    }
+                }
+            }
             candidate.isSinglishRoman -> {
                 commitRomanWord(candidate.commitText, trailingSpace = true)
                 typingMemory.rememberSinglishRoman(candidate.commitText)
@@ -1023,6 +1082,7 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun toggleLanguage() {
+        addWordMode = false
         if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
         language = if (language == Language.SINHALA) Language.ENGLISH else Language.SINHALA
         clearSuggestions()
@@ -1036,7 +1096,7 @@ class KeyboardService : InputMethodService() {
             getString(R.string.mode_english)
         }
         btnFix?.visibility = if (language == Language.ENGLISH) View.VISIBLE else View.GONE
-        btnToEnglish?.visibility = if (language == Language.SINHALA) View.VISIBLE else View.GONE
+        btnToEnglish?.visibility = if (language == Language.ENGLISH) View.VISIBLE else View.GONE
         val showTone = language == Language.ENGLISH
         btnTonePro?.visibility = if (showTone) View.VISIBLE else View.GONE
         btnToneFriendly?.visibility = if (showTone) View.VISIBLE else View.GONE
@@ -1091,13 +1151,7 @@ class KeyboardService : InputMethodService() {
             btnToEnglish?.isEnabled = false
 
             val text = withContext(Dispatchers.Main) {
-                val field = getFieldText(ic)
-                val buffer = sinhalaBuffer.toString().trim()
-                when {
-                    buffer.isNotEmpty() && field.isNotEmpty() -> "$field $buffer"
-                    buffer.isNotEmpty() -> buffer
-                    else -> field
-                }.trim()
+                getFieldText(ic).trim()
             }
             if (text.isBlank()) {
                 progress?.visibility = View.GONE
@@ -1113,11 +1167,7 @@ class KeyboardService : InputMethodService() {
 
             result.onSuccess { translated ->
                 replaceFieldText(ic, translated)
-                sinhalaBuffer.clear()
-                clearComposingText()
                 clearSuggestions()
-                language = Language.ENGLISH
-                updateLanguageUi()
             }.onFailure {
                 Toast.makeText(this@KeyboardService, R.string.translate_error, Toast.LENGTH_SHORT).show()
             }

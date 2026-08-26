@@ -21,7 +21,9 @@
     <string name="key_to_english">→EN</string>
     <string name="translating_singlish">Translating Singlish to English…</string>
     <string name="translate_error">Singlish translation failed</string>
-    <string name="suggestion_keep_typed">⌨ %1$s</string>
+    <string name="suggestion_add_word">+ Add word</string>
+    <string name="add_word_hint">Type the word to save, then press space or pick a suggestion</string>
+    <string name="word_saved">Word saved — it will appear in suggestions next time</string>
     <string name="emoji_recent">Recent</string>
     <string name="tone_professional">Pro</string>
     <string name="tone_friendly">Friendly</string>
