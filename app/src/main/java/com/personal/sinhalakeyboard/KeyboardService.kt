@@ -7,7 +7,6 @@ import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
 import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -30,6 +29,8 @@ class KeyboardService : InputMethodService() {
     private val repeatHandler = Handler(Looper.getMainLooper())
     private var repeatRunnable: Runnable? = null
 
+    private lateinit var singlishEngine: SinglishEngine
+
     private var keyboardView: View? = null
     private var suggestionRow: LinearLayout? = null
     private var btnLang: TextView? = null
@@ -40,6 +41,11 @@ class KeyboardService : InputMethodService() {
     private var shiftOn = false
     private var sinhalaBuffer = StringBuilder()
     private var fixJob: Job? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        singlishEngine = SinglishEngine(this)
+    }
 
     override fun onCreateInputView(): View {
         val view = LayoutInflater.from(this).inflate(R.layout.keyboard_view, null)
@@ -137,12 +143,13 @@ class KeyboardService : InputMethodService() {
         if (language == Language.ENGLISH) {
             currentInputConnection?.commitText(ch, 1)
             if (shiftOn) toggleShift()
+            updateEnglishSuggestions()
             return
         }
 
         sinhalaBuffer.append(ch.lowercase())
         updateComposingText()
-        updateSuggestions()
+        updateSinhalaSuggestions()
     }
 
     private fun onSpace() {
@@ -150,6 +157,7 @@ class KeyboardService : InputMethodService() {
             commitSinhalaWord()
         }
         currentInputConnection?.commitText(" ", 1)
+        clearSuggestions()
     }
 
     private fun onEnter() {
@@ -157,25 +165,34 @@ class KeyboardService : InputMethodService() {
             commitSinhalaWord()
         }
         currentInputConnection?.commitText("\n", 1)
+        clearSuggestions()
     }
 
     private fun onBackspace() {
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             sinhalaBuffer.deleteCharAt(sinhalaBuffer.length - 1)
             updateComposingText()
-            updateSuggestions()
+            updateSinhalaSuggestions()
             return
         }
         currentInputConnection?.deleteSurroundingText(1, 0)
+        if (language == Language.ENGLISH) updateEnglishSuggestions()
     }
 
     private fun commitSinhalaWord(sinhala: String? = null) {
-        val word = sinhala ?: SinglishEngine.transliterate(sinhalaBuffer.toString())
+        val word = sinhala ?: singlishEngine.transliterate(sinhalaBuffer.toString())
         if (word.isEmpty()) return
         currentInputConnection?.commitText(word, 1)
         sinhalaBuffer.clear()
         clearComposingText()
-        updateSuggestions()
+        clearSuggestions()
+    }
+
+    private fun commitRomanWord(roman: String) {
+        currentInputConnection?.commitText(roman, 1)
+        sinhalaBuffer.clear()
+        clearComposingText()
+        clearSuggestions()
     }
 
     private fun commitDirect(text: String) {
@@ -185,14 +202,13 @@ class KeyboardService : InputMethodService() {
         currentInputConnection?.commitText(text, 1)
     }
 
-    /** Show live Sinhala in the app's input field while typing. */
     private fun updateComposingText() {
         val ic = currentInputConnection ?: return
         if (sinhalaBuffer.isEmpty()) {
             ic.setComposingText("", 0)
             return
         }
-        val sinhala = SinglishEngine.transliterate(sinhalaBuffer.toString())
+        val sinhala = singlishEngine.transliterateLive(sinhalaBuffer.toString())
         ic.setComposingText(sinhala, 1)
     }
 
@@ -200,33 +216,74 @@ class KeyboardService : InputMethodService() {
         currentInputConnection?.finishComposingText()
     }
 
-    /** Show word suggestions in the bar above the keys. */
-    private fun updateSuggestions() {
+    private fun updateSinhalaSuggestions() {
+        if (sinhalaBuffer.isEmpty()) {
+            clearSuggestions()
+            return
+        }
+        val items = singlishEngine.suggestions(sinhalaBuffer.toString())
+        renderSuggestions(items) { candidate ->
+            if (candidate.isRoman) {
+                commitRomanWord(candidate.commitText)
+            } else {
+                commitSinhalaWord(candidate.commitText)
+            }
+        }
+    }
+
+    private fun updateEnglishSuggestions() {
+        val ic = currentInputConnection ?: return
+        val word = getCurrentWord(ic)
+        if (word.isEmpty()) {
+            clearSuggestions()
+            return
+        }
+        val items = EnglishSuggestions.suggest(word)
+        renderSuggestions(items) { candidate ->
+            replaceCurrentWord(ic, word, candidate.commitText)
+        }
+    }
+
+    private fun renderSuggestions(
+        items: List<SuggestionCandidate>,
+        onPick: (SuggestionCandidate) -> Unit,
+    ) {
         val row = suggestionRow ?: return
         row.removeAllViews()
-
-        if (language != Language.SINHALA || sinhalaBuffer.isEmpty()) return
-
-        val suggestions = SinglishEngine.suggestions(sinhalaBuffer.toString())
-        for (suggestion in suggestions) {
+        for (candidate in items) {
             val chip = TextView(this).apply {
-                text = suggestion
+                text = candidate.display
                 textSize = 16f
-                setTextColor(0xFF1B5E20.toInt())
+                setTextColor(if (candidate.isRoman) 0xFF616161.toInt() else 0xFF1B5E20.toInt())
                 setPadding(24, 12, 24, 12)
                 setBackgroundResource(R.drawable.suggestion_chip_bg)
-                val params = LinearLayout.LayoutParams(
+                layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                 ).apply { marginEnd = 8 }
-                layoutParams = params
-                setOnClickListener {
-                    sinhalaBuffer.clear()
-                    commitSinhalaWord(suggestion)
-                }
+                setOnClickListener { onPick(candidate) }
             }
             row.addView(chip)
         }
+    }
+
+    private fun clearSuggestions() {
+        suggestionRow?.removeAllViews()
+    }
+
+    private fun getCurrentWord(ic: InputConnection): String {
+        val before = ic.getTextBeforeCursor(100, 0)?.toString().orEmpty()
+        return before.takeLastWhile { !it.isWhitespace() }
+    }
+
+    private fun replaceCurrentWord(ic: InputConnection, oldWord: String, newWord: String) {
+        if (oldWord.isEmpty()) {
+            ic.commitText(newWord, 1)
+            return
+        }
+        ic.deleteSurroundingText(oldWord.length, 0)
+        ic.commitText(newWord, 1)
+        updateEnglishSuggestions()
     }
 
     private fun toggleShift() {
@@ -253,23 +310,18 @@ class KeyboardService : InputMethodService() {
     private fun toggleLanguage() {
         if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
         language = if (language == Language.SINHALA) Language.ENGLISH else Language.SINHALA
+        clearSuggestions()
         updateLanguageUi()
     }
 
     private fun updateLanguageUi() {
-        when (language) {
-            Language.SINHALA -> {
-                btnLang?.text = getString(R.string.mode_sinhala)
-                btnFix?.visibility = View.GONE
-                suggestionRow?.visibility = View.VISIBLE
-            }
-            Language.ENGLISH -> {
-                btnLang?.text = getString(R.string.mode_english)
-                btnFix?.visibility = View.VISIBLE
-                suggestionRow?.visibility = View.GONE
-                suggestionRow?.removeAllViews()
-            }
+        btnLang?.text = if (language == Language.SINHALA) {
+            getString(R.string.mode_sinhala)
+        } else {
+            getString(R.string.mode_english)
         }
+        btnFix?.visibility = if (language == Language.ENGLISH) View.VISIBLE else View.GONE
+        suggestionRow?.visibility = View.VISIBLE
     }
 
     private fun fixGrammar() {
@@ -323,7 +375,7 @@ class KeyboardService : InputMethodService() {
         super.onStartInput(attribute, restarting)
         sinhalaBuffer.clear()
         clearComposingText()
-        updateSuggestions()
+        clearSuggestions()
     }
 
     override fun onDestroy() {
