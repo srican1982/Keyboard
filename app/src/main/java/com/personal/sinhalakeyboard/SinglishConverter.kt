@@ -69,11 +69,10 @@ object SinglishConverter {
         "Dh" to "RETROFLEX_DH",
         "Baa" to "BH_AA",
         "Ba" to "SANYAKA_BA",
+        "Jhaa" to "JH_AA",
+        "Jaa" to "JH_AA",
+        "Jh" to "ASPIRATED_J",
         "K" to "KH",
-        "G" to "GH",
-        "P" to "PH",
-        "B" to "BH",
-        "J" to "ASPIRATED_J",
         "a" to "V_A",
         "A" to "V_AE",
         "i" to "V_I",
@@ -110,6 +109,10 @@ object SinglishConverter {
         "x" to "ANUSVARA",
         "X" to "MAHAPRANAANUSVARA",
         "H" to "VISARGA",
+        "G" to "GH",
+        "P" to "PH",
+        "B" to "BH",
+        "J" to "ASPIRATED_J",
         " " to " ",
         "\n" to "\n",
         "\t" to "\t",
@@ -226,6 +229,13 @@ object SinglishConverter {
 
             if (current == "BH_AA") {
                 output.append(consonantMap.getValue("BH"))
+                    .append(vowelModifier.getValue("V_AA"))
+                i++
+                continue
+            }
+
+            if (current == "JH_AA") {
+                output.append(consonantMap.getValue("ASPIRATED_J"))
                     .append(vowelModifier.getValue("V_AA"))
                 i++
                 continue
