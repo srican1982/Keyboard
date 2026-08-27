@@ -15,8 +15,6 @@ class TypingMemory(context: Context) {
 
     private val sinhalaByRoman = ConcurrentHashMap<String, Entry>()
     private val englishWords = ConcurrentHashMap<String, Entry>()
-    /** User-saved words in any script (Sinhala, Singlish, English, etc.). */
-    private val customWords = ConcurrentHashMap<String, Entry>()
     private val sinhalaBigrams = ConcurrentHashMap<String, ConcurrentHashMap<String, Entry>>()
     private val englishBigrams = ConcurrentHashMap<String, ConcurrentHashMap<String, Entry>>()
 
@@ -59,58 +57,6 @@ class TypingMemory(context: Context) {
         if (!SinhalaSuggestionRules.isReasonableRomanKey(key)) return
         bump(sinhalaByRoman, key, key)
         saveAsync()
-    }
-
-    /** User explicitly saved a word (+ Add word) — any script, boosted in suggestions. */
-    fun saveCustomWord(word: String) {
-        val display = word.trim()
-        if (display.isEmpty()) return
-        val key = canonicalKey(display)
-        val boosted = (customWords[key]?.count ?: 0) + 9
-        customWords[key] = Entry(display, boosted)
-        if (!containsSinhalaScript(display)) {
-            val lower = display.lowercase()
-            if (SinhalaSuggestionRules.isReasonableRomanKey(lower)) {
-                sinhalaByRoman[lower] = Entry(lower, (sinhalaByRoman[lower]?.count ?: 0) + 9)
-            }
-            if (display.any { it.isLetter() }) {
-                englishWords[lower] = Entry(lower, (englishWords[lower]?.count ?: 0) + 9)
-            }
-        }
-        saveAsync()
-    }
-
-    fun customWordSuggestions(prefix: String, limit: Int = 6): List<SuggestionCandidate> {
-        val p = prefix.trim()
-        if (p.isEmpty()) return emptyList()
-        val lower = p.lowercase()
-        return customWords.values
-            .filter { matchesCustomPrefix(it.value, p, lower) }
-            .sortedWith(
-                compareByDescending<Entry> { it.count }
-                    .thenBy { it.value.length }
-                    .thenBy { it.value },
-            )
-            .distinctBy { it.value }
-            .take(limit)
-            .map { entry ->
-                val roman = !containsSinhalaScript(entry.value)
-                SuggestionCandidate(
-                    display = entry.value,
-                    commitText = entry.value,
-                    isPersonal = true,
-                    isSinglishRoman = roman,
-                )
-            }
-    }
-
-    private fun canonicalKey(word: String): String =
-        if (containsSinhalaScript(word)) word else word.lowercase()
-
-    private fun matchesCustomPrefix(word: String, prefix: String, lowerPrefix: String): Boolean {
-        if (word.startsWith(prefix)) return true
-        if (!containsSinhalaScript(word)) return word.lowercase().startsWith(lowerPrefix)
-        return false
     }
 
     fun sinhalaSuggestions(prefix: String, limit: Int = 4): List<SuggestionCandidate> {
@@ -219,9 +165,6 @@ class TypingMemory(context: Context) {
                 sinhalaByRoman.forEach { (roman, entry) ->
                     out.write("S\t$roman\t${entry.value}\t${entry.count}\n")
                 }
-                customWords.forEach { (_, entry) ->
-                    out.write("C\t${canonicalKey(entry.value)}\t${entry.value}\t${entry.count}\n")
-                }
                 englishWords.forEach { (word, entry) ->
                     out.write("E\t$word\t${entry.count}\n")
                 }
@@ -257,12 +200,6 @@ class TypingMemory(context: Context) {
                             val ok = romanOnly ||
                                 SinhalaSuggestionRules.isReasonableSinhalaSuggestion(sinhala, roman.length)
                             if (ok) sinhalaByRoman[roman] = Entry(sinhala, count)
-                        }
-                        "C" -> if (parts.size >= 4) {
-                            val key = parts[1]
-                            val value = parts[2]
-                            val count = parts[3].toIntOrNull() ?: 1
-                            if (value.isNotBlank()) customWords[key] = Entry(value, count)
                         }
                         "E" -> if (parts.size >= 3) {
                             englishWords[parts[1]] = Entry(parts[1], parts[2].toIntOrNull() ?: 1)

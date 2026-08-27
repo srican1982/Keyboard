@@ -93,7 +93,6 @@ class EnglishSuggestions(
         pendingCallback = null
 
         val merged = linkedSetOf<SuggestionCandidate>()
-        typingMemory?.customWordSuggestions(prefix, limit = 4)?.forEach { merged.add(it) }
         typingMemory?.englishSuggestions(prefix, limit = 4)?.forEach { merged.add(it) }
         merged.addAll(pendingUserWords)
         merged.addAll(spellSuggestions)

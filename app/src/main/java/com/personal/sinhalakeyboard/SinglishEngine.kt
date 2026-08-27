@@ -62,8 +62,7 @@ class SinglishEngine(
             results.add(SuggestionCandidate(sinhala, sinhala))
         }
 
-        // Layer 0: user-saved words (any script) + personal history
-        typingMemory?.customWordSuggestions(p, limit = 5)?.forEach { results.add(it) }
+        // Layer 0: words you typed before (personal history)
         typingMemory?.sinhalaSuggestions(p, limit = 5)?.forEach { results.add(it) }
 
         // Layer 0.5: longer roman dictionary words (e.g. ko → koheda, kohomada)
@@ -107,7 +106,6 @@ class SinglishEngine(
         if (p.isEmpty()) return emptyList()
         val lower = p.lowercase()
         val results = LinkedHashSet<SuggestionCandidate>()
-        typingMemory?.customWordSuggestions(p, limit = 6)?.forEach { results.add(it) }
         typingMemory?.sinhalaSuggestions(p, limit = 6)?.forEach { results.add(it) }
         addRomanDictionaryPrefixes(lower, results, limit)
         return results.take(limit).toList()

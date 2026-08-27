@@ -4,8 +4,10 @@ import android.content.Intent
 import android.Manifest
 import android.content.pm.PackageManager
 import android.inputmethodservice.InputMethodService
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.text.InputType
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -58,6 +60,7 @@ class KeyboardService : InputMethodService() {
     private var btnToEnglish: TextView? = null
     private var btnTonePro: TextView? = null
     private var btnToneFriendly: TextView? = null
+    private var keyEnter: ImageView? = null
     private var progress: ProgressBar? = null
     private var keyboardKeysPanel: LinearLayout? = null
     private var emojiPanelRoot: View? = null
@@ -72,10 +75,10 @@ class KeyboardService : InputMethodService() {
     private var keyLayout = KeyLayout.LETTERS
     private var shiftOn = false
     private var sinhalaBuffer = StringBuilder()
-    private var addWordMode = false
+    private var enterIsSearch = false
+    private var currentEditorInfo: EditorInfo? = null
     private var fixJob: Job? = null
     private var translateJob: Job? = null
-    private var sinhalaSuggestionJob: Job? = null
     private var nextWordJob: Job? = null
     private var englishCloudJob: Job? = null
 
@@ -85,7 +88,9 @@ class KeyboardService : InputMethodService() {
     private var sinhalaSuggestionColor = 0xFF1B5E20.toInt()
     private var romanSuggestionColor = 0xFF616161.toInt()
     private var suggestionChipBg = R.drawable.suggestion_chip_light
-    private var suggestionChipActionBg = R.drawable.suggestion_chip_primary_light
+
+    private val sinhalaSuggestRunnable = Runnable { updateSinhalaSuggestions() }
+    private val englishSuggestRunnable = Runnable { updateEnglishSuggestions() }
 
     private val letterKeyIds = listOf(
         R.id.keyQ, R.id.keyW, R.id.keyE, R.id.keyR, R.id.keyT, R.id.keyY, R.id.keyU,
@@ -141,6 +146,7 @@ class KeyboardService : InputMethodService() {
         btnToEnglish = view.findViewById(R.id.btnToEnglish)
         btnTonePro = view.findViewById(R.id.btnTonePro)
         btnToneFriendly = view.findViewById(R.id.btnToneFriendly)
+        keyEnter = view.findViewById(R.id.keyEnter)
         progress = view.findViewById(R.id.progress)
         keyboardKeysPanel = view.findViewById(R.id.keyboardKeysPanel)
         emojiPanelRoot = view.findViewById(R.id.emojiPanel)
@@ -171,7 +177,7 @@ class KeyboardService : InputMethodService() {
             },
         )
         view.findViewById<TextView>(R.id.keySpace).setOnClickListener { onSpace() }
-        view.findViewById<ImageView>(R.id.keyEnter).setOnClickListener { onEnter() }
+        keyEnter?.setOnClickListener { onEnter() }
 
         btnLang?.setOnClickListener { toggleLanguage() }
         btnSettings?.setOnClickListener { openSettings() }
@@ -209,7 +215,6 @@ class KeyboardService : InputMethodService() {
                 btnMicBg = R.drawable.toolbar_btn_mic
                 btnFixBg = R.drawable.toolbar_btn_fix
                 suggestionChipBg = R.drawable.suggestion_chip_light
-                suggestionChipActionBg = R.drawable.suggestion_chip_primary_light
                 sinhalaSuggestionColor = 0xFF1B5E20.toInt()
                 romanSuggestionColor = 0xFF616161.toInt()
             }
@@ -222,7 +227,6 @@ class KeyboardService : InputMethodService() {
                 btnMicBg = R.drawable.toolbar_btn_mic
                 btnFixBg = R.drawable.toolbar_btn_fix
                 suggestionChipBg = R.drawable.suggestion_chip_dark
-                suggestionChipActionBg = R.drawable.suggestion_chip_primary_dark
                 sinhalaSuggestionColor = 0xFF81C784.toInt()
                 romanSuggestionColor = 0xFFB0BEC5.toInt()
             }
@@ -461,34 +465,33 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun onLetter(letter: String) {
-        hapticKey()
         val ch = if (shiftOn) letter.uppercase() else letter
-        if (addWordMode) {
-            currentInputConnection?.commitText(ch, 1)
-            if (shiftOn) toggleShift()
-            updateAddWordSuggestions()
-            return
-        }
         if (language == Language.ENGLISH) {
             currentInputConnection?.commitText(ch, 1)
             if (shiftOn) toggleShift()
-            updateEnglishSuggestions()
-            return
+            scheduleEnglishSuggestions()
+        } else {
+            sinhalaBuffer.append(ch)
+            if (shiftOn) toggleShift()
+            updateComposingText()
+            scheduleSinhalaSuggestions()
         }
+        hapticKey()
+    }
 
-        sinhalaBuffer.append(ch)
-        if (shiftOn) toggleShift()
-        updateComposingText()
-        updateSinhalaSuggestions()
+    private fun scheduleSinhalaSuggestions() {
+        keyboardView?.removeCallbacks(sinhalaSuggestRunnable)
+        keyboardView?.post(sinhalaSuggestRunnable)
+    }
+
+    private fun scheduleEnglishSuggestions() {
+        keyboardView?.removeCallbacks(englishSuggestRunnable)
+        keyboardView?.post(englishSuggestRunnable)
     }
 
     private fun onSpace() {
         hapticKey()
         val ic = currentInputConnection ?: return
-        if (addWordMode) {
-            finishAddWord()
-            return
-        }
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
         } else if (language == Language.ENGLISH) {
@@ -501,22 +504,45 @@ class KeyboardService : InputMethodService() {
 
     private fun onEnter() {
         hapticKey()
-        if (addWordMode) {
-            val ic = currentInputConnection ?: return
-            val word = getCurrentWord(ic).trim()
-            addWordMode = false
-            if (word.isNotEmpty()) saveWordFromAddMode(word)
-            sinhalaBuffer.clear()
-            clearComposingText()
-            ic.commitText("\n", 1)
-            clearSuggestions()
-            return
-        }
+        val ic = currentInputConnection ?: return
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
         }
-        currentInputConnection?.commitText("\n", 1)
+        performEnterAction(ic)
         clearSuggestions()
+    }
+
+    private fun performEnterAction(ic: InputConnection) {
+        if (enterIsSearch) {
+            ic.performEditorAction(EditorInfo.IME_ACTION_SEARCH)
+            return
+        }
+        val action = currentEditorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION)
+            ?: EditorInfo.IME_ACTION_UNSPECIFIED
+        when (action) {
+            EditorInfo.IME_ACTION_SEND -> ic.performEditorAction(EditorInfo.IME_ACTION_SEND)
+            EditorInfo.IME_ACTION_GO -> ic.performEditorAction(EditorInfo.IME_ACTION_GO)
+            EditorInfo.IME_ACTION_DONE -> ic.performEditorAction(EditorInfo.IME_ACTION_DONE)
+            EditorInfo.IME_ACTION_SEARCH -> ic.performEditorAction(EditorInfo.IME_ACTION_SEARCH)
+            EditorInfo.IME_ACTION_NEXT -> ic.performEditorAction(EditorInfo.IME_ACTION_NEXT)
+            else -> ic.commitText("\n", 1)
+        }
+    }
+
+    private fun updateEnterKey(info: EditorInfo?) {
+        currentEditorInfo = info
+        val action = info?.imeOptions?.and(EditorInfo.IME_MASK_ACTION)
+            ?: EditorInfo.IME_ACTION_UNSPECIFIED
+        val variation = info?.inputType?.and(InputType.TYPE_MASK_VARIATION) ?: 0
+        enterIsSearch = action == EditorInfo.IME_ACTION_SEARCH ||
+            variation == 0x00000010 || // TYPE_TEXT_VARIATION_WEB_SEARCH
+            variation == InputType.TYPE_TEXT_VARIATION_FILTER
+        keyEnter?.setImageResource(
+            if (enterIsSearch) R.drawable.ic_search else R.drawable.ic_send_arrow,
+        )
+        keyEnter?.contentDescription = getString(
+            if (enterIsSearch) R.string.key_search else R.string.key_send,
+        )
     }
 
     private fun onBackspaceTap() {
@@ -528,10 +554,6 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun deleteOneCharacter() {
-        if (addWordMode) {
-            currentInputConnection?.deleteSurroundingText(1, 0)
-            return
-        }
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             sinhalaBuffer.deleteCharAt(sinhalaBuffer.length - 1)
             updateComposingText()
@@ -541,22 +563,6 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun refreshAfterBackspace() {
-        if (addWordMode) {
-            val empty = if (language == Language.SINHALA) {
-                sinhalaBuffer.isEmpty()
-            } else {
-                getCurrentWord(currentInputConnection ?: return).isEmpty()
-            }
-            if (empty) {
-                addWordMode = false
-                clearSuggestions()
-                return
-            }
-            if (addWordMode) {
-                updateAddWordSuggestions()
-                return
-            }
-        }
         if (language == Language.SINHALA) {
             if (sinhalaBuffer.isNotEmpty()) {
                 updateSinhalaSuggestions()
@@ -659,138 +665,17 @@ class KeyboardService : InputMethodService() {
 
     private fun updateSinhalaSuggestions() {
         if (sinhalaBuffer.isEmpty()) {
-            sinhalaSuggestionJob?.cancel()
-            if (addWordMode) {
-                showAddWordHintRow()
-            } else {
-                clearSuggestions()
-            }
+            clearSuggestions()
             return
         }
         val typed = sinhalaBuffer.toString()
-        sinhalaSuggestionJob?.cancel()
-        sinhalaSuggestionJob = scope.launch {
-            val items = withContext(Dispatchers.Default) {
-                singlishEngine.suggestions(typed)
-            }
-            if (sinhalaBuffer.toString() != typed) return@launch
-            val withActions = items.toMutableList().apply {
-                if (!addWordMode) {
-                    add(
-                        SuggestionCandidate(
-                            display = getString(R.string.suggestion_add_word),
-                            commitText = "",
-                            isAction = true,
-                            isAddWord = true,
-                        ),
-                    )
-                }
-            }
-            renderSuggestions(withActions) { pickSinhalaSuggestion(it) }
-        }
-    }
-
-    private fun startAddWordMode() {
-        addWordMode = true
-        val ic = currentInputConnection
-        if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty() && ic != null) {
-            ic.commitText(sinhalaBuffer.toString(), 1)
-            sinhalaBuffer.clear()
-            clearComposingText()
-        }
-        val partial = ic?.let { getCurrentWord(it) }.orEmpty()
-        if (partial.isEmpty()) {
-            showAddWordHintRow()
-            Toast.makeText(this, R.string.add_word_hint, Toast.LENGTH_LONG).show()
-        } else {
-            Toast.makeText(this, R.string.add_word_pick_hint, Toast.LENGTH_SHORT).show()
-            updateAddWordSuggestions()
-        }
-    }
-
-    private fun updateAddWordSuggestions() {
-        val ic = currentInputConnection ?: return
-        val word = getCurrentWord(ic)
-        if (word.isEmpty()) {
-            showAddWordHintRow()
-            return
-        }
-        val items = typingMemory.customWordSuggestions(word, limit = 8)
-        renderSuggestions(items) { candidate ->
-            val liveWord = getCurrentWord(ic)
-            saveWordFromAddMode(liveWord)
-            addWordMode = false
-            replaceCurrentWord(ic, liveWord, candidate.commitText, trailingSpace = true)
-            clearSuggestions()
-        }
-    }
-
-    private fun showAddWordHintRow() {
-        renderSuggestions(
-            listOf(
-                SuggestionCandidate(
-                    display = getString(R.string.add_word_mode_active),
-                    commitText = "",
-                    isAction = true,
-                ),
-            ),
-        ) { /* hint chip — tap does nothing */ }
-    }
-
-    private fun finishAddWord() {
-        addWordMode = false
-        val ic = currentInputConnection ?: return
-        val word = getCurrentWord(ic).trim()
-        sinhalaBuffer.clear()
-        clearComposingText()
-        if (word.isEmpty()) {
-            clearSuggestions()
-            ic.commitText(" ", 1)
-            return
-        }
-        saveWordFromAddMode(word)
-        ic.commitText(" ", 1)
-        clearSuggestions()
-        updateNextWordSuggestions()
-    }
-
-    private fun saveWordFromAddMode(word: String) {
-        val trimmed = word.trim()
-        if (trimmed.isNotEmpty()) {
-            typingMemory.saveCustomWord(trimmed)
-            Toast.makeText(this, R.string.word_saved, Toast.LENGTH_SHORT).show()
-        }
+        val items = singlishEngine.suggestions(typed)
+        if (sinhalaBuffer.toString() != typed) return
+        renderSuggestions(items) { pickSinhalaSuggestion(it) }
     }
 
     private fun pickSinhalaSuggestion(candidate: SuggestionCandidate) {
         when {
-            candidate.isAddWord -> startAddWordMode()
-            addWordMode -> {
-                val ic = currentInputConnection ?: return
-                val typed = getCurrentWord(ic).trim()
-                addWordMode = false
-                saveWordFromAddMode(typed)
-                when {
-                    candidate.isSinglishRoman || candidate.isRoman -> {
-                        if (language == Language.SINHALA && !containsSinhalaScript(candidate.commitText)) {
-                            commitSinglishRomanAsSinhala(candidate.commitText, trailingSpace = true)
-                        } else {
-                            replaceCurrentWord(ic, typed, candidate.commitText, trailingSpace = true)
-                        }
-                    }
-                    language == Language.SINHALA && containsSinhalaScript(candidate.commitText) -> {
-                        ic.commitText("${candidate.commitText} ", 1)
-                        rememberWordCommitted(candidate.commitText)
-                        sinhalaBuffer.clear()
-                        clearComposingText()
-                        clearSuggestions()
-                    }
-                    else -> {
-                        replaceCurrentWord(ic, typed, candidate.commitText, trailingSpace = true)
-                        clearSuggestions()
-                    }
-                }
-            }
             candidate.isSinglishRoman -> {
                 if (language == Language.SINHALA) {
                     commitSinglishRomanAsSinhala(candidate.commitText, trailingSpace = true)
@@ -818,17 +703,13 @@ class KeyboardService : InputMethodService() {
         val word = getCurrentWord(ic)
         if (word.isEmpty()) {
             englishCloudJob?.cancel()
-            if (addWordMode) {
-                showAddWordHintRow()
-            } else {
-                updateNextWordSuggestions()
-            }
+            updateNextWordSuggestions()
             return
         }
         englishCloudJob?.cancel()
 
         val instantSinglish = singlishEngine.romanPrefixSuggestions(word, limit = 10)
-        if (instantSinglish.isNotEmpty() || addWordMode) {
+        if (instantSinglish.isNotEmpty()) {
             renderEnglishSuggestions(word, instantSinglish)
         }
 
@@ -844,19 +725,7 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun renderEnglishSuggestions(partialWord: String, items: List<SuggestionCandidate>) {
-        val withActions = items.toMutableList().apply {
-            if (!addWordMode) {
-                add(
-                    SuggestionCandidate(
-                        display = getString(R.string.suggestion_add_word),
-                        commitText = "",
-                        isAction = true,
-                        isAddWord = true,
-                    ),
-                )
-            }
-        }
-        renderSuggestions(withActions) { pickEnglishSuggestion(it, partialWord) }
+        renderSuggestions(items) { pickEnglishSuggestion(it, partialWord) }
     }
 
     private fun mergeSinglishFirst(
@@ -871,22 +740,8 @@ class KeyboardService : InputMethodService() {
 
     private fun pickEnglishSuggestion(candidate: SuggestionCandidate, partialWord: String) {
         val ic = currentInputConnection ?: return
-        when {
-            candidate.isAddWord -> startAddWordMode()
-            addWordMode -> {
-                val typed = getCurrentWord(ic).trim()
-                addWordMode = false
-                saveWordFromAddMode(typed)
-                if (!candidate.isAction) {
-                    replaceCurrentWord(ic, partialWord, candidate.commitText, trailingSpace = true)
-                    clearSuggestions()
-                }
-            }
-            else -> {
-                replaceCurrentWord(ic, partialWord, candidate.commitText, trailingSpace = true)
-                clearSuggestions()
-            }
-        }
+        replaceCurrentWord(ic, partialWord, candidate.commitText, trailingSpace = true)
+        clearSuggestions()
     }
 
     private fun fetchEnglishCloudWordCompletions(
@@ -1035,13 +890,11 @@ class KeyboardService : InputMethodService() {
                 textSize = 15f
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    letterSpacing = 0.05f
+                }
                 setTextColor(
                     when {
-                        candidate.isAction -> if (activeTheme == KeyboardTheme.BLACK) {
-                            0xFF81C784.toInt()
-                        } else {
-                            0xFF1B5E20.toInt()
-                        }
                         candidate.isPersonal -> if (activeTheme == KeyboardTheme.BLACK) {
                             0xFFFFB74D.toInt()
                         } else {
@@ -1057,9 +910,7 @@ class KeyboardService : InputMethodService() {
                     },
                 )
                 setPadding(20, 8, 20, 8)
-                setBackgroundResource(
-                    if (candidate.isAction) suggestionChipActionBg else suggestionChipBg,
-                )
+                setBackgroundResource(suggestionChipBg)
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -1241,7 +1092,6 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun toggleLanguage() {
-        addWordMode = false
         if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
         language = if (language == Language.SINHALA) Language.ENGLISH else Language.SINHALA
         clearSuggestions()
@@ -1387,6 +1237,7 @@ class KeyboardService : InputMethodService() {
 
     override fun onStartInput(attribute: EditorInfo?, restarting: Boolean) {
         super.onStartInput(attribute, restarting)
+        updateEnterKey(attribute)
         sinhalaBuffer.clear()
         clearComposingText()
         clearSuggestions()
@@ -1399,7 +1250,6 @@ class KeyboardService : InputMethodService() {
     }
 
     override fun onFinishInput() {
-        addWordMode = false
         sinhalaBuffer.clear()
         clearComposingText()
         clearSuggestions()
@@ -1414,7 +1264,4 @@ class KeyboardService : InputMethodService() {
         scope.cancel()
         super.onDestroy()
     }
-
-    private fun containsSinhalaScript(text: String): Boolean =
-        text.any { it.code in 0x0D80..0x0DFF }
 }
