@@ -54,8 +54,8 @@ class KeyboardService : InputMethodService() {
     private var suggestionScroll: View? = null
     private var toolbarRow: View? = null
     private var btnToolbarExpand: ImageView? = null
-    private var btnSettings: ImageView? = null
     private var btnLang: TextView? = null
+    private var keyLangBottom: TextView? = null
     private var btnMic: ImageView? = null
     private var btnFix: TextView? = null
     private var btnToEnglish: TextView? = null
@@ -116,8 +116,8 @@ class KeyboardService : InputMethodService() {
     private val symbolsRow3Keys = listOf(".", ",", "?", "!", "'", "•", "@")
 
     private val themedKeyIds = letterKeyIds + listOf(
-        R.id.keyShift, R.id.keyBackspace, R.id.keyNumbers, R.id.keyComma,
-        R.id.keySpace, R.id.keyPeriod, R.id.btnEmojiBackspace,
+        R.id.keyShift, R.id.keyBackspace, R.id.keyNumbers,
+        R.id.keySpace, R.id.keyPeriod, R.id.keyLangBottom, R.id.keyBackspaceBottom,
     )
 
     override fun onCreate() {
@@ -141,8 +141,8 @@ class KeyboardService : InputMethodService() {
         suggestionScroll = view.findViewById(R.id.suggestionScroll)
         toolbarRow = view.findViewById(R.id.toolbarRow)
         btnToolbarExpand = view.findViewById(R.id.btnToolbarExpand)
-        btnSettings = view.findViewById(R.id.btnSettings)
         btnLang = view.findViewById(R.id.btnLang)
+        keyLangBottom = view.findViewById(R.id.keyLangBottom)
         btnMic = view.findViewById(R.id.btnMic)
         btnFix = view.findViewById(R.id.btnFix)
         btnToEnglish = view.findViewById(R.id.btnToEnglish)
@@ -181,7 +181,7 @@ class KeyboardService : InputMethodService() {
             onRelease = { backspaceHandler.onRelease() },
         )
         setupRepeatKey(
-            view.findViewById(R.id.btnEmojiBackspace),
+            view.findViewById(R.id.keyBackspaceBottom),
             onInitial = { backspaceHandler.onInitial() },
             onRepeat = { backspaceHandler.onRepeat() },
             onRelease = { backspaceHandler.onRelease() },
@@ -190,7 +190,7 @@ class KeyboardService : InputMethodService() {
         keyEnter?.setOnClickListener { onEnter() }
 
         btnLang?.setOnClickListener { toggleLanguage() }
-        btnSettings?.setOnClickListener { openSettings() }
+        keyLangBottom?.setOnClickListener { toggleLanguage() }
         btnMic?.setOnClickListener { toggleVoiceInput() }
         btnFix?.setOnClickListener { fixGrammar() }
         btnToEnglish?.setOnClickListener { translateSinglishToEnglish() }
@@ -212,7 +212,6 @@ class KeyboardService : InputMethodService() {
         val view = keyboardView ?: return
 
         val keyBg: Int
-        val btnLangBg: Int
         val btnMicBg: Int
         val btnFixBg: Int
         when (activeTheme) {
@@ -221,7 +220,6 @@ class KeyboardService : InputMethodService() {
                 keyBg = R.drawable.key_bg_light
                 keyTextColor = 0xFF212121.toInt()
                 keyMutedColor = 0xFF616161.toInt()
-                btnLangBg = R.drawable.toolbar_btn_lang
                 btnMicBg = R.drawable.toolbar_btn_mic
                 btnFixBg = R.drawable.toolbar_btn_fix
                 suggestionChipBg = R.drawable.suggestion_chip_light
@@ -233,7 +231,6 @@ class KeyboardService : InputMethodService() {
                 keyBg = R.drawable.key_bg_dark
                 keyTextColor = 0xFFFFFFFF.toInt()
                 keyMutedColor = 0xFFB0BEC5.toInt()
-                btnLangBg = R.drawable.toolbar_btn_lang
                 btnMicBg = R.drawable.toolbar_btn_mic
                 btnFixBg = R.drawable.toolbar_btn_fix
                 suggestionChipBg = R.drawable.suggestion_chip_dark
@@ -250,7 +247,7 @@ class KeyboardService : InputMethodService() {
         }
 
         btnLang?.apply {
-            setBackgroundResource(btnLangBg)
+            setBackgroundResource(R.drawable.toolbar_btn_lang)
             setTextColor(0xFFFFFFFF.toInt())
         }
         btnMic?.apply {
@@ -262,10 +259,7 @@ class KeyboardService : InputMethodService() {
             setBackgroundResource(R.drawable.toolbar_btn_expand)
             setColorFilter(0xFFFFFFFF.toInt())
         }
-        btnSettings?.apply {
-            setBackgroundResource(R.drawable.toolbar_btn_settings)
-            setColorFilter(0xFFFFFFFF.toInt())
-        }
+        applyCommaKeyTheme(view, keyBg)
         btnFix?.apply {
             setBackgroundResource(btnFixBg)
             setTextColor(0xFFFFFFFF.toInt())
@@ -275,6 +269,13 @@ class KeyboardService : InputMethodService() {
             setTextColor(0xFFFFFFFF.toInt())
         }
         updateToneUi()
+        updateLanguageUi()
+    }
+
+    private fun applyCommaKeyTheme(view: View, keyBg: Int) {
+        view.findViewById<View>(R.id.keyComma).setBackgroundResource(keyBg)
+        view.findViewById<TextView>(R.id.keyCommaEmoji).setTextColor(keyTextColor)
+        view.findViewById<TextView>(R.id.keyCommaSymbol).setTextColor(keyTextColor)
     }
 
     private fun applyKeyLayout() {
@@ -297,13 +298,25 @@ class KeyboardService : InputMethodService() {
         for (i in 0 until panel.childCount - 1) {
             panel.getChildAt(i).visibility = if (showEmoji) View.GONE else View.VISIBLE
         }
+        val view = keyboardView ?: return
+        view.findViewById<View>(R.id.keySpace).visibility = if (showEmoji) View.GONE else View.VISIBLE
+        view.findViewById<View>(R.id.keyPeriod).visibility = if (showEmoji) View.GONE else View.VISIBLE
+        view.findViewById<View>(R.id.keyEnter).visibility = if (showEmoji) View.GONE else View.VISIBLE
+        view.findViewById<View>(R.id.keyLangBottom).visibility = if (showEmoji) View.VISIBLE else View.GONE
+        view.findViewById<View>(R.id.keyBackspaceBottom).visibility = if (showEmoji) View.VISIBLE else View.GONE
+        btnLang?.visibility = if (showEmoji) View.GONE else View.VISIBLE
+        updateLanguageUi()
     }
 
     private fun bindEmojiLayout(view: View) {
-        view.findViewById<TextView>(R.id.keyComma).apply {
+        view.findViewById<View>(R.id.keyCommaEmoji).visibility = View.GONE
+        view.findViewById<TextView>(R.id.keyCommaSymbol).apply {
+            visibility = View.VISIBLE
             text = getString(R.string.key_abc)
-            setOnClickListener { showLettersLayout() }
+            textSize = 16f
         }
+        clearKeyTouchListener(view.findViewById(R.id.keyComma))
+        view.findViewById<View>(R.id.keyComma).setOnClickListener { showLettersLayout() }
         view.findViewById<TextView>(R.id.keyNumbers).apply {
             text = "123"
             setOnClickListener { showNumbersLayout() }
@@ -326,10 +339,13 @@ class KeyboardService : InputMethodService() {
             text = "123"
             setOnClickListener { showNumbersLayout() }
         }
-        view.findViewById<TextView>(R.id.keyComma).apply {
-            text = "😊"
-            setOnClickListener { showEmojiLayout() }
+        view.findViewById<View>(R.id.keyCommaEmoji).visibility = View.VISIBLE
+        view.findViewById<TextView>(R.id.keyCommaSymbol).apply {
+            visibility = View.VISIBLE
+            text = ","
+            textSize = 16f
         }
+        setupEmojiCommaKey(view.findViewById(R.id.keyComma))
         view.findViewById<TextView>(R.id.keyPeriod).apply {
             text = "."
             setOnClickListener { commitDirect(".") }
@@ -346,10 +362,14 @@ class KeyboardService : InputMethodService() {
             text = "ABC"
             setOnClickListener { showLettersLayout() }
         }
-        view.findViewById<TextView>(R.id.keyComma).apply {
+        view.findViewById<View>(R.id.keyCommaEmoji).visibility = View.GONE
+        view.findViewById<TextView>(R.id.keyCommaSymbol).apply {
+            visibility = View.VISIBLE
             text = ","
-            setOnClickListener { commitDirect(",") }
+            textSize = 18f
         }
+        clearKeyTouchListener(view.findViewById(R.id.keyComma))
+        view.findViewById<View>(R.id.keyComma).setOnClickListener { commitDirect(",") }
         view.findViewById<TextView>(R.id.keyPeriod).apply {
             text = "."
             setOnClickListener { commitDirect(".") }
@@ -366,10 +386,14 @@ class KeyboardService : InputMethodService() {
             text = "ABC"
             setOnClickListener { showLettersLayout() }
         }
-        view.findViewById<TextView>(R.id.keyComma).apply {
+        view.findViewById<View>(R.id.keyCommaEmoji).visibility = View.GONE
+        view.findViewById<TextView>(R.id.keyCommaSymbol).apply {
+            visibility = View.VISIBLE
             text = ","
-            setOnClickListener { commitDirect(",") }
+            textSize = 18f
         }
+        clearKeyTouchListener(view.findViewById(R.id.keyComma))
+        view.findViewById<View>(R.id.keyComma).setOnClickListener { commitDirect(",") }
         view.findViewById<TextView>(R.id.keyPeriod).apply {
             text = "."
             setOnClickListener { commitDirect(".") }
@@ -445,6 +469,42 @@ class KeyboardService : InputMethodService() {
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     stopRepeat()
                     onRelease()
+                    true
+                }
+                else -> false
+            }
+        }
+    }
+
+    private fun clearKeyTouchListener(view: View) {
+        view.setOnTouchListener(null)
+        view.isClickable = true
+    }
+
+    private fun setupEmojiCommaKey(view: View) {
+        view.setOnClickListener(null)
+        var longPressTriggered = false
+        val longPressRunnable = Runnable {
+            longPressTriggered = true
+            hapticKey()
+            showEmojiLayout()
+        }
+        view.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    longPressTriggered = false
+                    v.postDelayed(longPressRunnable, 400L)
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    v.removeCallbacks(longPressRunnable)
+                    if (!longPressTriggered) {
+                        commitDirect(",")
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    v.removeCallbacks(longPressRunnable)
                     true
                 }
                 else -> false
@@ -1176,14 +1236,6 @@ class KeyboardService : InputMethodService() {
         }
     }
 
-    private fun openSettings() {
-        hapticKey()
-        val intent = Intent(this, SettingsActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        startActivity(intent)
-    }
-
     private fun toggleLanguage() {
         if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
         language = if (language == Language.SINHALA) Language.ENGLISH else Language.SINHALA
@@ -1192,10 +1244,26 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun updateLanguageUi() {
-        btnLang?.text = if (language == Language.SINHALA) {
-            getString(R.string.mode_sinhala)
-        } else {
-            getString(R.string.mode_english)
+        val sinhala = language == Language.SINHALA
+        val label = if (sinhala) getString(R.string.mode_sinhala) else getString(R.string.mode_english)
+        val inactiveKeyBg = when (activeTheme) {
+            KeyboardTheme.WHITE -> R.drawable.key_bg_light
+            KeyboardTheme.BLACK -> R.drawable.key_bg_dark
+        }
+        btnLang?.apply {
+            text = label
+            visibility = if (keyLayout == KeyLayout.EMOJI) View.GONE else View.VISIBLE
+            setBackgroundResource(
+                if (sinhala) R.drawable.toolbar_btn_lang else R.drawable.toolbar_btn_lang_inactive,
+            )
+            setTextColor(0xFFFFFFFF.toInt())
+            alpha = if (sinhala) 1f else 0.8f
+        }
+        keyLangBottom?.apply {
+            text = label
+            setBackgroundResource(if (sinhala) R.drawable.toolbar_btn_lang else inactiveKeyBg)
+            setTextColor(if (sinhala) 0xFFFFFFFF.toInt() else keyTextColor)
+            alpha = if (sinhala) 1f else 0.75f
         }
         btnFix?.visibility = if (language == Language.ENGLISH) View.VISIBLE else View.GONE
         btnToEnglish?.visibility = if (language == Language.ENGLISH) View.VISIBLE else View.GONE

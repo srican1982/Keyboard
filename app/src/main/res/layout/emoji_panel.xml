@@ -35,22 +35,4 @@
             android:columnCount="8"
             android:paddingHorizontal="2dp" />
     </ScrollView>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="end"
-        android:orientation="horizontal"
-        android:paddingHorizontal="4dp"
-        android:paddingTop="4dp">
-
-        <TextView
-            android:id="@+id/btnEmojiBackspace"
-            style="@style/KeyTextWide"
-            android:layout_width="wrap_content"
-            android:layout_weight="0"
-            android:contentDescription="@string/key_backspace"
-            android:minWidth="72dp"
-            android:text="⌫" />
-    </LinearLayout>
 </LinearLayout>
