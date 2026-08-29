@@ -45,11 +45,12 @@
         android:paddingTop="4dp">
 
         <TextView
-            android:id="@+id/btnEmojiBack"
+            android:id="@+id/btnEmojiBackspace"
             style="@style/KeyTextWide"
             android:layout_width="wrap_content"
             android:layout_weight="0"
+            android:contentDescription="@string/key_backspace"
             android:minWidth="72dp"
-            android:text="@string/key_abc" />
+            android:text="⌫" />
     </LinearLayout>
 </LinearLayout>

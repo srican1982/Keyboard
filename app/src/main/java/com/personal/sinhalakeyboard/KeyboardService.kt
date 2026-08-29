@@ -116,7 +116,7 @@ class KeyboardService : InputMethodService() {
 
     private val themedKeyIds = letterKeyIds + listOf(
         R.id.keyShift, R.id.keyBackspace, R.id.keyNumbers, R.id.keyComma,
-        R.id.keySpace, R.id.keyPeriod,
+        R.id.keySpace, R.id.keyPeriod, R.id.btnEmojiBackspace,
     )
 
     override fun onCreate() {
@@ -155,27 +155,35 @@ class KeyboardService : InputMethodService() {
 
         emojiPanel = EmojiPanel(this, emojiPanelRoot!!) { emoji ->
             insertEmoji(emoji)
-        }.also { panel ->
-            panel.bind()
-            panel.setOnBackListener { showLettersLayout() }
-        }
+        }.also { it.bind() }
 
         btnTonePro?.setOnClickListener { setEnglishTone(EnglishTone.PROFESSIONAL) }
         btnToneFriendly?.setOnClickListener { setEnglishTone(EnglishTone.FRIENDLY) }
 
-        setupRepeatKey(
-            view.findViewById(R.id.keyBackspace),
-            onInitial = { onBackspaceTap() },
-            onRepeat = {
+        val backspaceHandler = object {
+            fun onInitial() = onBackspaceTap()
+            fun onRepeat() {
                 backspaceRepeating = true
                 deleteOneCharacter()
-            },
-            onRelease = {
+            }
+            fun onRelease() {
                 if (backspaceRepeating) {
                     backspaceRepeating = false
                     refreshAfterBackspace()
                 }
-            },
+            }
+        }
+        setupRepeatKey(
+            view.findViewById(R.id.keyBackspace),
+            onInitial = { backspaceHandler.onInitial() },
+            onRepeat = { backspaceHandler.onRepeat() },
+            onRelease = { backspaceHandler.onRelease() },
+        )
+        setupRepeatKey(
+            view.findViewById(R.id.btnEmojiBackspace),
+            onInitial = { backspaceHandler.onInitial() },
+            onRepeat = { backspaceHandler.onRepeat() },
+            onRelease = { backspaceHandler.onRelease() },
         )
         view.findViewById<TextView>(R.id.keySpace).setOnClickListener { onSpace() }
         keyEnter?.setOnClickListener { onEnter() }
@@ -1302,11 +1310,23 @@ class KeyboardService : InputMethodService() {
         clearComposingText()
         clearSuggestions()
         lastCommittedWord = null
-        keyLayout = KeyLayout.LETTERS
+        if (!restarting) {
+            keyLayout = defaultLayoutFor(attribute)
+        }
         englishTone = Prefs.getEnglishTone(this)
         voiceInputHelper?.prepare()
         applyKeyLayout()
         applyTheme()
+    }
+
+    /** Numeric / phone fields start on 123; otherwise letters. User layout choice is kept on restart. */
+    private fun defaultLayoutFor(info: EditorInfo?): KeyLayout {
+        val inputClass = info?.inputType?.and(InputType.TYPE_MASK_CLASS) ?: return KeyLayout.LETTERS
+        return when (inputClass) {
+            InputType.TYPE_CLASS_NUMBER,
+            InputType.TYPE_CLASS_PHONE -> KeyLayout.NUMBERS
+            else -> KeyLayout.LETTERS
+        }
     }
 
     override fun onFinishInput() {

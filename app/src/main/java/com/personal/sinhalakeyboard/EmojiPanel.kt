@@ -23,10 +23,6 @@ class EmojiPanel(
         showCategory(0)
     }
 
-    fun setOnBackListener(action: () -> Unit) {
-        root.findViewById<TextView>(R.id.btnEmojiBack).setOnClickListener { action() }
-    }
-
     private fun buildCategoryBar() {
         categoryBar.removeAllViews()
         EmojiData.categories.forEachIndexed { index, category ->

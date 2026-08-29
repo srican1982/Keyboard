@@ -15,6 +15,7 @@
     <string name="show_toolbar">Show keyboard tools</string>
     <string name="key_emoji">Emoji</string>
     <string name="key_abc">ABC</string>
+    <string name="key_backspace">Backspace</string>
     <string name="key_send">Send</string>
     <string name="key_mic">Microphone</string>
     <string name="open_settings">Keyboard settings</string>
