@@ -1280,11 +1280,16 @@ class KeyboardService : InputMethodService() {
             KeyboardTheme.WHITE -> R.drawable.key_bg_light
             KeyboardTheme.BLACK -> R.drawable.key_bg_dark
         }
+        val activeKeyBg = when (activeTheme) {
+            KeyboardTheme.WHITE -> R.drawable.key_bg_lang_active
+            KeyboardTheme.BLACK -> R.drawable.key_bg_lang_active_dark
+        }
         keyLangBottom?.apply {
             text = label
-            setBackgroundResource(if (sinhala) R.drawable.toolbar_btn_lang else inactiveKeyBg)
+            setBackgroundResource(if (sinhala) activeKeyBg else inactiveKeyBg)
             setTextColor(if (sinhala) 0xFFFFFFFF.toInt() else keyTextColor)
-            alpha = if (sinhala) 1f else 0.75f
+            setTypeface(null, if (sinhala) android.graphics.Typeface.BOLD else android.graphics.Typeface.NORMAL)
+            alpha = 1f
         }
         btnFix?.visibility = if (language == Language.ENGLISH) View.VISIBLE else View.GONE
         btnToEnglish?.visibility = if (language == Language.ENGLISH) View.VISIBLE else View.GONE
