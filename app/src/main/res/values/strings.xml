@@ -10,6 +10,7 @@
     <string name="fixing_grammar">Rewriting whole message…</string>
     <string name="grammar_error">Grammar fix failed</string>
     <string name="mode_sinhala">සිං</string>
+    <string name="mode_sinhala_key">අ</string>
     <string name="mode_english">EN</string>
     <string name="key_fix">Fix</string>
     <string name="show_toolbar">Show keyboard tools</string>

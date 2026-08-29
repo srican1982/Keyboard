@@ -54,7 +54,6 @@ class KeyboardService : InputMethodService() {
     private var suggestionScroll: View? = null
     private var toolbarRow: View? = null
     private var btnToolbarExpand: ImageView? = null
-    private var btnLang: TextView? = null
     private var keyLangBottom: TextView? = null
     private var btnMic: ImageView? = null
     private var btnFix: TextView? = null
@@ -117,7 +116,7 @@ class KeyboardService : InputMethodService() {
 
     private val themedKeyIds = letterKeyIds + listOf(
         R.id.keyShift, R.id.keyBackspace, R.id.keyNumbers,
-        R.id.keySpace, R.id.keyPeriod, R.id.keyLangBottom, R.id.keyBackspaceBottom,
+        R.id.keySpace, R.id.keyPeriod, R.id.keyBackspaceBottom,
     )
 
     override fun onCreate() {
@@ -141,7 +140,6 @@ class KeyboardService : InputMethodService() {
         suggestionScroll = view.findViewById(R.id.suggestionScroll)
         toolbarRow = view.findViewById(R.id.toolbarRow)
         btnToolbarExpand = view.findViewById(R.id.btnToolbarExpand)
-        btnLang = view.findViewById(R.id.btnLang)
         keyLangBottom = view.findViewById(R.id.keyLangBottom)
         btnMic = view.findViewById(R.id.btnMic)
         btnFix = view.findViewById(R.id.btnFix)
@@ -189,7 +187,6 @@ class KeyboardService : InputMethodService() {
         view.findViewById<TextView>(R.id.keySpace).setOnClickListener { onSpace() }
         keyEnter?.setOnClickListener { onEnter() }
 
-        btnLang?.setOnClickListener { toggleLanguage() }
         keyLangBottom?.setOnClickListener { toggleLanguage() }
         btnMic?.setOnClickListener { toggleVoiceInput() }
         btnFix?.setOnClickListener { fixGrammar() }
@@ -246,10 +243,6 @@ class KeyboardService : InputMethodService() {
             }
         }
 
-        btnLang?.apply {
-            setBackgroundResource(R.drawable.toolbar_btn_lang)
-            setTextColor(0xFFFFFFFF.toInt())
-        }
         btnMic?.apply {
             setBackgroundResource(btnMicBg)
             setColorFilter(0xFFFFFFFF.toInt())
@@ -299,13 +292,46 @@ class KeyboardService : InputMethodService() {
             panel.getChildAt(i).visibility = if (showEmoji) View.GONE else View.VISIBLE
         }
         val view = keyboardView ?: return
+        view.findViewById<View>(R.id.keyLangBottom).visibility = if (showEmoji) View.GONE else View.VISIBLE
         view.findViewById<View>(R.id.keySpace).visibility = if (showEmoji) View.GONE else View.VISIBLE
         view.findViewById<View>(R.id.keyPeriod).visibility = if (showEmoji) View.GONE else View.VISIBLE
         view.findViewById<View>(R.id.keyEnter).visibility = if (showEmoji) View.GONE else View.VISIBLE
-        view.findViewById<View>(R.id.keyLangBottom).visibility = if (showEmoji) View.VISIBLE else View.GONE
         view.findViewById<View>(R.id.keyBackspaceBottom).visibility = if (showEmoji) View.VISIBLE else View.GONE
-        btnLang?.visibility = if (showEmoji) View.GONE else View.VISIBLE
+        updateBottomRowSpacing(showEmoji)
         updateLanguageUi()
+    }
+
+    private fun updateBottomRowSpacing(showEmoji: Boolean) {
+        val view = keyboardView ?: return
+        val marginPx = (if (showEmoji) 8 else 1) * resources.displayMetrics.density
+        val margin = marginPx.toInt()
+        if (showEmoji) {
+            listOf(R.id.keyNumbers, R.id.keyComma, R.id.keyBackspaceBottom).forEach { id ->
+                val v = view.findViewById<View>(id)
+                val lp = v.layoutParams as LinearLayout.LayoutParams
+                lp.weight = 1f
+                lp.width = 0
+                lp.setMargins(margin, lp.topMargin, margin, lp.bottomMargin)
+                v.layoutParams = lp
+            }
+        } else {
+            val weights = mapOf(
+                R.id.keyNumbers to 1.4f,
+                R.id.keyComma to 1f,
+                R.id.keyLangBottom to 1f,
+                R.id.keySpace to 4f,
+                R.id.keyPeriod to 1f,
+                R.id.keyEnter to 1.4f,
+            )
+            weights.forEach { (id, weight) ->
+                val v = view.findViewById<View>(id) ?: return@forEach
+                val lp = v.layoutParams as LinearLayout.LayoutParams
+                lp.weight = weight
+                lp.width = 0
+                lp.setMargins(margin, lp.topMargin, margin, lp.bottomMargin)
+                v.layoutParams = lp
+            }
+        }
     }
 
     private fun bindEmojiLayout(view: View) {
@@ -1245,19 +1271,14 @@ class KeyboardService : InputMethodService() {
 
     private fun updateLanguageUi() {
         val sinhala = language == Language.SINHALA
-        val label = if (sinhala) getString(R.string.mode_sinhala) else getString(R.string.mode_english)
+        val label = if (sinhala) {
+            getString(R.string.mode_sinhala_key)
+        } else {
+            getString(R.string.mode_english)
+        }
         val inactiveKeyBg = when (activeTheme) {
             KeyboardTheme.WHITE -> R.drawable.key_bg_light
             KeyboardTheme.BLACK -> R.drawable.key_bg_dark
-        }
-        btnLang?.apply {
-            text = label
-            visibility = if (keyLayout == KeyLayout.EMOJI) View.GONE else View.VISIBLE
-            setBackgroundResource(
-                if (sinhala) R.drawable.toolbar_btn_lang else R.drawable.toolbar_btn_lang_inactive,
-            )
-            setTextColor(0xFFFFFFFF.toInt())
-            alpha = if (sinhala) 1f else 0.8f
         }
         keyLangBottom?.apply {
             text = label

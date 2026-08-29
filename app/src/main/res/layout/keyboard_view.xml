@@ -37,14 +37,6 @@
             android:orientation="horizontal">
 
             <TextView
-                android:id="@+id/btnLang"
-                style="@style/ToolbarButton"
-                android:layout_marginStart="0dp"
-                android:background="@drawable/toolbar_btn_lang"
-                android:text="@string/mode_sinhala"
-                android:textColor="#FFFFFF" />
-
-            <TextView
                 android:id="@+id/btnToEnglish"
                 style="@style/ToolbarButton"
                 android:background="@drawable/toolbar_btn_translate"
@@ -167,9 +159,8 @@
             <include layout="@layout/key_emoji_comma" />
             <TextView
                 android:id="@+id/keyLangBottom"
-                style="@style/KeyText"
-                android:text="@string/mode_sinhala"
-                android:visibility="gone" />
+                style="@style/KeyTextLang"
+                android:text="@string/mode_sinhala_key" />
             <TextView android:id="@+id/keySpace" style="@style/KeyTextSpace" android:text="space" />
             <TextView android:id="@+id/keyPeriod" style="@style/KeyText" android:text="." />
             <TextView
