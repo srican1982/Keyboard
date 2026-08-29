@@ -20,6 +20,7 @@ import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
+import java.text.BreakIterator
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -568,7 +569,31 @@ class KeyboardService : InputMethodService() {
             updateComposingText()
             return
         }
-        currentInputConnection?.deleteSurroundingText(1, 0)
+        deleteTextBeforeCursor()
+    }
+
+    /** Delete the full grapheme before the cursor (emoji, Sinhala, combining marks). */
+    private fun deleteTextBeforeCursor(graphemeCount: Int = 1) {
+        val ic = currentInputConnection ?: return
+        val lookBehind = (graphemeCount * 8).coerceAtLeast(8)
+        val before = ic.getTextBeforeCursor(lookBehind, 0) ?: return
+        if (before.isEmpty()) return
+
+        val text = before.toString()
+        val breakIterator = BreakIterator.getCharacterInstance()
+        breakIterator.setText(text)
+        var end = text.length
+        var graphemes = 0
+        while (graphemes < graphemeCount && end > 0) {
+            val start = breakIterator.preceding(end)
+            if (start == BreakIterator.DONE) break
+            end = start
+            graphemes++
+        }
+        val deleteChars = text.length - end
+        if (deleteChars > 0) {
+            ic.deleteSurroundingText(deleteChars, 0)
+        }
     }
 
     private fun refreshAfterBackspace() {
