@@ -28,17 +28,57 @@ class CloudSuggestionService {
         if (contextText.isBlank() || apiKey.isBlank()) {
             return@withContext Result.success(emptyList())
         }
-        val lang = if (sinhala) "Sinhala" else "English"
-        val toneHint = if (sinhala) "" else " Use ${tone.aiDescription()}."
-        val system = "You predict the next word(s) someone is typing in $lang.$toneHint " +
-            "Given the message text so far, return ONLY a JSON array of up to " +
-            "$limit single words (or short phrases max 2 words) they are most " +
-            "likely to type next. Example: [\"am\", \"will\", \"can\"]. " +
-            "No explanation, no markdown."
+        val system = if (sinhala) {
+            "You predict the next word(s) in a Sinhala text message written in Sinhala script. " +
+                "Given the message so far, return ONLY a JSON array of up to $limit likely next " +
+                "words in Sinhala Unicode (සිංහල අකුරු only — not English, not Singlish roman). " +
+                "Short 2-word phrases OK. Example: [\"යන්න\", \"කොහොමද\"]. No explanation, no markdown."
+        } else {
+            "You predict the next word(s) someone is typing in English. Use ${tone.aiDescription()}. " +
+                "Given the message text so far, return ONLY a JSON array of up to $limit single words " +
+                "(or short phrases max 2 words) they are most likely to type next. " +
+                "Example: [\"am\", \"will\", \"can\"]. No explanation, no markdown."
+        }
         callOpenRouter(
             apiKey = apiKey,
             systemPrompt = system,
             userContent = contextText.takeLast(200),
+            maxTokens = 120,
+            limit = limit,
+        )
+    }
+
+    /** Complete partial Singlish typing → Sinhala script word suggestions. */
+    suspend fun predictSinhalaWordCompletions(
+        contextText: String,
+        partialSinglish: String,
+        apiKey: String,
+        limit: Int = 5,
+    ): Result<List<String>> = withContext(Dispatchers.IO) {
+        if (partialSinglish.isBlank() || apiKey.isBlank()) {
+            return@withContext Result.success(emptyList())
+        }
+        val system = "You help someone type Sinhala using Singlish (Roman-letter phonetic spelling). " +
+            "Given the message context and the partial Singlish they are typing, return ONLY a JSON " +
+            "array of up to $limit complete words in Sinhala script (Unicode U+0D80–U+0DFF). " +
+            "Understand Sri Lankan Singlish spellings (mama, kohomada, yanna, etc.). " +
+            "Prefer words matching the partial spelling. Example for \"mam\": [\"මම\"]. " +
+            "For \"koho\": [\"කොහොමද\", \"කොහෙද\"]. Sinhala script ONLY — no English, no roman. " +
+            "No explanation, no markdown."
+        val user = buildString {
+            if (contextText.isNotBlank()) {
+                append("Message so far:\n")
+                append(contextText.takeLast(250))
+                append("\n\n")
+            }
+            append("Partial Singlish being typed: \"")
+            append(partialSinglish)
+            append('"')
+        }
+        callOpenRouter(
+            apiKey = apiKey,
+            systemPrompt = system,
+            userContent = user,
             maxTokens = 120,
             limit = limit,
         )

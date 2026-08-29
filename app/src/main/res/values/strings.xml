@@ -38,8 +38,8 @@
     <string name="grant_mic">Allow microphone</string>
     <string name="continuous_voice_title">Continuous voice (always listening)</string>
     <string name="continuous_voice_summary">After tapping Mic, keep listening until you tap Mic again</string>
-    <string name="cloud_suggestions_title">Cloud AI suggestions (English)</string>
-    <string name="cloud_suggestions_summary">Smart word completion while typing and phrase/sentence chips after space (needs OpenRouter key + internet)</string>
+    <string name="cloud_suggestions_title">Cloud AI suggestions</string>
+    <string name="cloud_suggestions_summary">AI Sinhala word chips while typing and after space; English completions too (needs OpenRouter key + internet)</string>
     <string name="next_word_hint">Next:</string>
     <string name="theme_title">Keyboard theme</string>
     <string name="theme_white">White</string>

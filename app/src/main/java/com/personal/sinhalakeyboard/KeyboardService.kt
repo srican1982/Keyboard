@@ -81,6 +81,7 @@ class KeyboardService : InputMethodService() {
     private var translateJob: Job? = null
     private var nextWordJob: Job? = null
     private var englishCloudJob: Job? = null
+    private var sinhalaCloudJob: Job? = null
 
     private var activeTheme = KeyboardTheme.WHITE
     private var keyTextColor = 0xFF212121.toInt()
@@ -665,13 +666,56 @@ class KeyboardService : InputMethodService() {
 
     private fun updateSinhalaSuggestions() {
         if (sinhalaBuffer.isEmpty()) {
+            sinhalaCloudJob?.cancel()
             clearSuggestions()
             return
         }
         val typed = sinhalaBuffer.toString()
+        sinhalaCloudJob?.cancel()
         val items = singlishEngine.suggestions(typed)
         if (sinhalaBuffer.toString() != typed) return
         renderSuggestions(items) { pickSinhalaSuggestion(it) }
+        fetchSinhalaCloudWordCompletions(typed, items)
+    }
+
+    private fun fetchSinhalaCloudWordCompletions(
+        partialSinglish: String,
+        localItems: List<SuggestionCandidate>,
+    ) {
+        if (language != Language.SINHALA || !Prefs.isCloudSuggestionsEnabled(this)) return
+        val apiKey = Prefs.getApiKey(this)
+        if (apiKey.isBlank() || partialSinglish.length < 2) return
+
+        sinhalaCloudJob?.cancel()
+        sinhalaCloudJob = scope.launch {
+            delay(450)
+            if (sinhalaBuffer.toString() != partialSinglish) return@launch
+            val ic = currentInputConnection ?: return@launch
+            val context = buildSinhalaContextForCloud(ic, partialSinglish)
+            val cloudResult = cloudSuggestionService.predictSinhalaWordCompletions(
+                contextText = context,
+                partialSinglish = partialSinglish,
+                apiKey = apiKey,
+            )
+            val cloudWords = cloudResult.getOrNull().orEmpty()
+                .filter { containsSinhalaScript(it) }
+            if (cloudWords.isEmpty()) return@launch
+            if (sinhalaBuffer.toString() != partialSinglish) return@launch
+            val merged = mergeCloudSuggestions(
+                local = localItems,
+                cloudItems = cloudWords,
+                prefixHint = null,
+                isNextWord = false,
+                sinhalaScript = true,
+            )
+            renderSuggestions(merged) { pickSinhalaSuggestion(it) }
+        }
+    }
+
+    /** Field text + current Singlish buffer for AI context. */
+    private fun buildSinhalaContextForCloud(ic: InputConnection, partialSinglish: String): String {
+        val before = ic.getTextBeforeCursor(500, 0)?.toString().orEmpty()
+        return if (before.isBlank()) partialSinglish else "$before $partialSinglish"
     }
 
     private fun pickSinhalaSuggestion(candidate: SuggestionCandidate) {
@@ -821,9 +865,16 @@ class KeyboardService : InputMethodService() {
                 )
             }
             val cloudWords = cloudResult.getOrNull().orEmpty()
+                .let { if (sinhala) it.filter { w -> containsSinhalaScript(w) } else it }
             if (cloudWords.isEmpty()) return@launch
             if (getLastWord(currentInputConnection ?: return@launch) != lastWord) return@launch
-            val merged = mergeCloudSuggestions(local, cloudWords, prefixHint = null, isNextWord = true)
+            val merged = mergeCloudSuggestions(
+                local = local,
+                cloudItems = cloudWords,
+                prefixHint = null,
+                isNextWord = true,
+                sinhalaScript = sinhala,
+            )
             renderSuggestions(merged) { candidate ->
                 commitNextWord(candidate)
             }
@@ -835,14 +886,19 @@ class KeyboardService : InputMethodService() {
         cloudItems: List<String>,
         prefixHint: String?,
         isNextWord: Boolean,
+        sinhalaScript: Boolean = false,
     ): List<SuggestionCandidate> {
-        val seen = local.map { it.commitText.lowercase() }.toMutableSet()
+        val seen = local.map {
+            if (sinhalaScript) it.commitText else it.commitText.lowercase()
+        }.toMutableSet()
         val merged = local.toMutableList()
         for (raw in cloudItems) {
             val text = raw.trim()
             if (text.isBlank()) continue
+            if (sinhalaScript && !containsSinhalaScript(text)) continue
             val commit = formatCloudSuggestion(text, prefixHint)
-            if (!seen.add(commit.lowercase())) continue
+            val key = if (sinhalaScript) commit else commit.lowercase()
+            if (!seen.add(key)) continue
             merged.add(
                 SuggestionCandidate(
                     display = truncateSuggestionDisplay(commit),
@@ -855,6 +911,9 @@ class KeyboardService : InputMethodService() {
         }
         return merged
     }
+
+    private fun containsSinhalaScript(text: String): Boolean =
+        text.any { it.code in 0x0D80..0x0DFF }
 
     private fun formatCloudSuggestion(text: String, prefixHint: String?): String {
         if (prefixHint.isNullOrEmpty()) return text
@@ -935,6 +994,7 @@ class KeyboardService : InputMethodService() {
     private fun clearSuggestions() {
         nextWordJob?.cancel()
         englishCloudJob?.cancel()
+        sinhalaCloudJob?.cancel()
         suggestionRow?.removeAllViews()
         toolbarExpanded = false
         updateTopBarMode(hasSuggestions = false)
