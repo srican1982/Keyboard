@@ -25,6 +25,7 @@
     <string name="translate_error">Singlish translation failed</string>
     <string name="key_search">Search</string>
     <string name="emoji_recent">Recent</string>
+    <string name="emoji_quick_pick">Quick emoji</string>
     <string name="tone_professional">Pro</string>
     <string name="tone_friendly">Friendly</string>
     <string name="haptic_title">Key press vibration</string>

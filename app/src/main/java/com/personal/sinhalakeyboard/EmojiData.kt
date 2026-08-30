@@ -3,6 +3,10 @@ package com.personal.sinhalakeyboard
 /** System Unicode emoji categories (rendered by the device font). */
 object EmojiData {
 
+    val quickPickDefaults: List<String> = listOf(
+        "😊", "😂", "❤️", "👍", "🙏", "😍", "🔥", "✨", "😭", "🥰", "👏", "💯",
+    )
+
     data class Category(val icon: String, val name: String, val emojis: List<String>)
 
     val categories: List<Category> = listOf(

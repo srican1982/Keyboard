@@ -106,6 +106,23 @@
             android:src="@drawable/ic_mic" />
     </LinearLayout>
 
+    <HorizontalScrollView
+        android:id="@+id/recentEmojiScroll"
+        android:layout_width="match_parent"
+        android:layout_height="36dp"
+        android:layout_marginTop="2dp"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:id="@+id/recentEmojiRow"
+            android:layout_width="wrap_content"
+            android:layout_height="match_parent"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:paddingHorizontal="4dp" />
+    </HorizontalScrollView>
+
     <include
         android:id="@+id/emojiPanel"
         layout="@layout/emoji_panel" />

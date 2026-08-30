@@ -52,6 +52,8 @@ class KeyboardService : InputMethodService() {
     private var keyboardView: View? = null
     private var suggestionRow: LinearLayout? = null
     private var suggestionScroll: View? = null
+    private var recentEmojiRow: LinearLayout? = null
+    private var recentEmojiScroll: View? = null
     private var toolbarRow: View? = null
     private var btnToolbarExpand: ImageView? = null
     private var keyLangBottom: TextView? = null
@@ -138,6 +140,8 @@ class KeyboardService : InputMethodService() {
         keyboardView = view
         suggestionRow = view.findViewById(R.id.suggestionRow)
         suggestionScroll = view.findViewById(R.id.suggestionScroll)
+        recentEmojiRow = view.findViewById(R.id.recentEmojiRow)
+        recentEmojiScroll = view.findViewById(R.id.recentEmojiScroll)
         toolbarRow = view.findViewById(R.id.toolbarRow)
         btnToolbarExpand = view.findViewById(R.id.btnToolbarExpand)
         keyLangBottom = view.findViewById(R.id.keyLangBottom)
@@ -200,6 +204,7 @@ class KeyboardService : InputMethodService() {
         applyKeyLayout()
         applyTheme()
         updateLanguageUi()
+        updateRecentEmojiRow()
         updateTopBarMode(hasSuggestions = false)
         return view
     }
@@ -298,6 +303,7 @@ class KeyboardService : InputMethodService() {
         view.findViewById<View>(R.id.keyEnter).visibility = if (showEmoji) View.GONE else View.VISIBLE
         view.findViewById<View>(R.id.keyBackspaceBottom).visibility = if (showEmoji) View.VISIBLE else View.GONE
         updateBottomRowSpacing(showEmoji)
+        updateRecentEmojiVisibility(hideForSuggestions = false)
         updateLanguageUi()
     }
 
@@ -1108,6 +1114,44 @@ class KeyboardService : InputMethodService() {
         btnToolbarExpand?.visibility = if (showSuggestions) View.VISIBLE else View.GONE
         toolbarRow?.visibility = if (showSuggestions) View.GONE else View.VISIBLE
         suggestionScroll?.visibility = if (showSuggestions) View.VISIBLE else View.GONE
+        updateRecentEmojiVisibility(showSuggestions)
+    }
+
+    private fun updateRecentEmojiVisibility(hideForSuggestions: Boolean) {
+        val show = !hideForSuggestions &&
+            keyLayout != KeyLayout.EMOJI &&
+            language == Language.ENGLISH
+        recentEmojiScroll?.visibility = if (show) View.VISIBLE else View.GONE
+    }
+
+    private fun updateRecentEmojiRow() {
+        val row = recentEmojiRow ?: return
+        row.removeAllViews()
+        val emojis = buildQuickEmojiList()
+        val pad = (4 * resources.displayMetrics.density).toInt()
+        emojis.forEach { emoji ->
+            val cell = TextView(this).apply {
+                text = emoji
+                textSize = 22f
+                gravity = android.view.Gravity.CENTER
+                setPadding(pad, 0, pad, 0)
+                setOnClickListener {
+                    insertEmoji(emoji)
+                    updateRecentEmojiRow()
+                }
+            }
+            row.addView(cell)
+        }
+    }
+
+    private fun buildQuickEmojiList(): List<String> {
+        val recent = Prefs.getRecentEmojis(this)
+        val merged = recent.toMutableList()
+        for (fallback in EmojiData.quickPickDefaults) {
+            if (merged.size >= 14) break
+            if (!merged.contains(fallback)) merged.add(fallback)
+        }
+        return merged.take(14)
     }
 
     private fun clearSuggestions() {
@@ -1166,6 +1210,7 @@ class KeyboardService : InputMethodService() {
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
         }
+        Prefs.addRecentEmoji(this, emoji)
         currentInputConnection?.commitText(emoji, 1)
         clearSuggestions()
     }
@@ -1297,6 +1342,7 @@ class KeyboardService : InputMethodService() {
         btnTonePro?.visibility = if (showTone) View.VISIBLE else View.GONE
         btnToneFriendly?.visibility = if (showTone) View.VISIBLE else View.GONE
         if (showTone) updateToneUi()
+        updateRecentEmojiVisibility(hideForSuggestions = false)
     }
 
     private fun fixGrammar() {
