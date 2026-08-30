@@ -569,6 +569,7 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun onLetter(letter: String) {
+        beginTypingCompactMode()
         val ch = if (shiftOn) letter.uppercase() else letter
         if (language == Language.ENGLISH) {
             currentInputConnection?.commitText(ch, 1)
@@ -595,6 +596,7 @@ class KeyboardService : InputMethodService() {
 
     private fun onSpace() {
         hapticKey()
+        beginTypingCompactMode()
         val ic = currentInputConnection ?: return
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
@@ -630,16 +632,16 @@ class KeyboardService : InputMethodService() {
             ic.performEditorAction(EditorInfo.IME_ACTION_SEARCH)
             return
         }
-        val action = currentEditorInfo?.imeOptions?.and(EditorInfo.IME_MASK_ACTION)
-            ?: EditorInfo.IME_ACTION_UNSPECIFIED
-        when (action) {
-            EditorInfo.IME_ACTION_SEND -> ic.performEditorAction(EditorInfo.IME_ACTION_SEND)
-            EditorInfo.IME_ACTION_GO -> ic.performEditorAction(EditorInfo.IME_ACTION_GO)
-            EditorInfo.IME_ACTION_DONE -> ic.performEditorAction(EditorInfo.IME_ACTION_DONE)
-            EditorInfo.IME_ACTION_SEARCH -> ic.performEditorAction(EditorInfo.IME_ACTION_SEARCH)
-            EditorInfo.IME_ACTION_NEXT -> ic.performEditorAction(EditorInfo.IME_ACTION_NEXT)
-            else -> ic.commitText("\n", 1)
-        }
+        // New line keeps keyboard open; SEND/DONE actions often dismiss the IME.
+        ic.commitText("\n", 1)
+    }
+
+    /** Shrink toolbar while typing; arrow temporarily expands until the next key press. */
+    private fun beginTypingCompactMode() {
+        if (keyLayout == KeyLayout.EMOJI) return
+        toolbarCompact = true
+        toolbarExpanded = false
+        updateTopBarMode()
     }
 
     private fun updateEnterKey(info: EditorInfo?) {
@@ -777,6 +779,7 @@ class KeyboardService : InputMethodService() {
 
     private fun commitDirect(text: String) {
         hapticKey()
+        beginTypingCompactMode()
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
         }
@@ -1076,7 +1079,7 @@ class KeyboardService : InputMethodService() {
         items: List<SuggestionCandidate>,
         onPick: (SuggestionCandidate) -> Unit,
     ) {
-        if (items.isNotEmpty() && !toolbarExpanded) {
+        if (items.isNotEmpty()) {
             toolbarCompact = true
         }
         val row = suggestionRow ?: return
