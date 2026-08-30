@@ -112,7 +112,7 @@
         android:layout_height="36dp"
         android:layout_marginTop="2dp"
         android:scrollbars="none"
-        android:visibility="gone">
+        android:visibility="visible">
 
         <LinearLayout
             android:id="@+id/recentEmojiRow"

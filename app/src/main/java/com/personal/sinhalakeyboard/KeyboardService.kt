@@ -84,6 +84,7 @@ class KeyboardService : InputMethodService() {
     private var nextWordJob: Job? = null
     private var englishCloudJob: Job? = null
     private var sinhalaCloudJob: Job? = null
+    private val emojisSinceSend = LinkedHashSet<String>()
 
     private var activeTheme = KeyboardTheme.WHITE
     private var keyTextColor = 0xFF212121.toInt()
@@ -303,7 +304,7 @@ class KeyboardService : InputMethodService() {
         view.findViewById<View>(R.id.keyEnter).visibility = if (showEmoji) View.GONE else View.VISIBLE
         view.findViewById<View>(R.id.keyBackspaceBottom).visibility = if (showEmoji) View.VISIBLE else View.GONE
         updateBottomRowSpacing(showEmoji)
-        updateRecentEmojiVisibility(hideForSuggestions = false)
+        updateRecentEmojiBarVisibility()
         updateLanguageUi()
     }
 
@@ -610,8 +611,17 @@ class KeyboardService : InputMethodService() {
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
         }
+        flushEmojiUsageToRecent()
         performEnterAction(ic)
         clearSuggestions()
+    }
+
+    /** Move quick-bar order only after send, so repeated taps stay in place. */
+    private fun flushEmojiUsageToRecent() {
+        if (emojisSinceSend.isEmpty()) return
+        emojisSinceSend.reversed().forEach { Prefs.addRecentEmoji(this, it) }
+        emojisSinceSend.clear()
+        updateRecentEmojiRow()
     }
 
     private fun performEnterAction(ic: InputConnection) {
@@ -1114,12 +1124,10 @@ class KeyboardService : InputMethodService() {
         btnToolbarExpand?.visibility = if (showSuggestions) View.VISIBLE else View.GONE
         toolbarRow?.visibility = if (showSuggestions) View.GONE else View.VISIBLE
         suggestionScroll?.visibility = if (showSuggestions) View.VISIBLE else View.GONE
-        updateRecentEmojiVisibility(showSuggestions)
     }
 
-    private fun updateRecentEmojiVisibility(hideForSuggestions: Boolean) {
-        val show = !hideForSuggestions && keyLayout != KeyLayout.EMOJI
-        recentEmojiScroll?.visibility = if (show) View.VISIBLE else View.GONE
+    private fun updateRecentEmojiBarVisibility() {
+        recentEmojiScroll?.visibility = if (keyLayout == KeyLayout.EMOJI) View.GONE else View.VISIBLE
     }
 
     private fun updateRecentEmojiRow() {
@@ -1135,7 +1143,6 @@ class KeyboardService : InputMethodService() {
                 setPadding(pad, 0, pad, 0)
                 setOnClickListener {
                     insertEmoji(emoji)
-                    updateRecentEmojiRow()
                 }
             }
             row.addView(cell)
@@ -1208,7 +1215,7 @@ class KeyboardService : InputMethodService() {
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             commitSinhalaWord()
         }
-        Prefs.addRecentEmoji(this, emoji)
+        emojisSinceSend.add(emoji)
         currentInputConnection?.commitText(emoji, 1)
         clearSuggestions()
     }
@@ -1340,7 +1347,6 @@ class KeyboardService : InputMethodService() {
         btnTonePro?.visibility = if (showTone) View.VISIBLE else View.GONE
         btnToneFriendly?.visibility = if (showTone) View.VISIBLE else View.GONE
         if (showTone) updateToneUi()
-        updateRecentEmojiVisibility(hideForSuggestions = false)
     }
 
     private fun fixGrammar() {
@@ -1475,6 +1481,7 @@ class KeyboardService : InputMethodService() {
         lastCommittedWord = null
         if (!restarting) {
             keyLayout = defaultLayoutFor(attribute)
+            emojisSinceSend.clear()
         }
         englishTone = Prefs.getEnglishTone(this)
         voiceInputHelper?.prepare()

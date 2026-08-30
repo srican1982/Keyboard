@@ -61,7 +61,6 @@ class EmojiPanel(
                 gravity = Gravity.CENTER
                 setPadding(4, 12, 4, 12)
                 setOnClickListener {
-                    Prefs.addRecentEmoji(context, emoji)
                     onEmojiPicked(emoji)
                 }
             }
