@@ -1118,9 +1118,7 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun updateRecentEmojiVisibility(hideForSuggestions: Boolean) {
-        val show = !hideForSuggestions &&
-            keyLayout != KeyLayout.EMOJI &&
-            language == Language.ENGLISH
+        val show = !hideForSuggestions && keyLayout != KeyLayout.EMOJI
         recentEmojiScroll?.visibility = if (show) View.VISIBLE else View.GONE
     }
 
