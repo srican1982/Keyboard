@@ -58,8 +58,12 @@ class VoiceInputHelper(
     }
 
     private fun stopRecognizerOnly() {
-        if (!listening) return
         speechRecognizer?.stopListening()
+        speechRecognizer?.cancel()
+        if (listening) {
+            listening = false
+            onListeningChanged(false)
+        }
     }
 
     fun destroy() {
@@ -102,7 +106,10 @@ class VoiceInputHelper(
     override fun onBufferReceived(buffer: ByteArray?) = Unit
 
     override fun onEndOfSpeech() {
-        // Keep listening state until onResults/onError so partial text is not committed early.
+        if (!continuous) {
+            listening = false
+            onListeningChanged(false)
+        }
     }
 
     override fun onError(error: Int) {
