@@ -77,6 +77,7 @@ class KeyboardService : InputMethodService() {
     private var language = Language.SINHALA
     private var keyLayout = KeyLayout.LETTERS
     private var shiftOn = false
+    private var shiftLocked = false
     private var sinhalaBuffer = StringBuilder()
     private var enterIsSearch = false
     private var currentEditorInfo: EditorInfo? = null
@@ -270,6 +271,9 @@ class KeyboardService : InputMethodService() {
         }
         updateToneUi()
         updateLanguageUi()
+        if (keyLayout == KeyLayout.LETTERS) {
+            updateShiftKeyAppearance()
+        }
     }
 
     private fun applyCommaKeyTheme(view: View, keyBg: Int) {
@@ -280,7 +284,11 @@ class KeyboardService : InputMethodService() {
 
     private fun applyKeyLayout() {
         val view = keyboardView ?: return
-        shiftOn = false
+        if (keyLayout == KeyLayout.LETTERS) {
+            shiftOn = shiftLocked
+        } else {
+            shiftOn = false
+        }
 
         when (keyLayout) {
             KeyLayout.LETTERS -> bindLettersLayout(view)
@@ -366,8 +374,7 @@ class KeyboardService : InputMethodService() {
             }
         }
         view.findViewById<TextView>(R.id.keyShift).apply {
-            text = "⇧"
-            setOnClickListener { toggleShift() }
+            setupShiftKey(this)
         }
         view.findViewById<TextView>(R.id.keyNumbers).apply {
             text = "123"
@@ -390,6 +397,7 @@ class KeyboardService : InputMethodService() {
         bindSymbolRows(view, numbersRow1, numbersRow2, numbersRow3Keys)
         view.findViewById<TextView>(R.id.keyShift).apply {
             text = "#+="
+            clearKeyTouchListener(this)
             setOnClickListener { showSymbolsLayout() }
         }
         view.findViewById<TextView>(R.id.keyNumbers).apply {
@@ -414,6 +422,7 @@ class KeyboardService : InputMethodService() {
         bindSymbolRows(view, symbolsRow1, symbolsRow2, symbolsRow3Keys)
         view.findViewById<TextView>(R.id.keyShift).apply {
             text = "123"
+            clearKeyTouchListener(this)
             setOnClickListener { showNumbersLayout() }
         }
         view.findViewById<TextView>(R.id.keyNumbers).apply {
@@ -573,11 +582,11 @@ class KeyboardService : InputMethodService() {
         val ch = if (shiftOn) letter.uppercase() else letter
         if (language == Language.ENGLISH) {
             currentInputConnection?.commitText(ch, 1)
-            if (shiftOn) toggleShift()
+            if (shiftOn && !shiftLocked) releaseOneShotShift()
             scheduleEnglishSuggestions()
         } else {
             sinhalaBuffer.append(ch)
-            if (shiftOn) toggleShift()
+            if (shiftOn && !shiftLocked) releaseOneShotShift()
             updateComposingText()
             scheduleSinhalaSuggestions()
         }
@@ -616,6 +625,7 @@ class KeyboardService : InputMethodService() {
         }
         flushEmojiUsageToRecent()
         performEnterAction(ic)
+        clearShiftLock()
         clearSuggestions(expandToolbar = true)
     }
 
@@ -1304,11 +1314,67 @@ class KeyboardService : InputMethodService() {
         if (trailingSpace) updateNextWordSuggestions() else updateEnglishSuggestions()
     }
 
-    private fun toggleShift() {
-        hapticKey()
+    private fun setupShiftKey(view: View) {
+        view.setOnClickListener(null)
+        var lockTriggered = false
+        val lockRunnable = Runnable {
+            lockTriggered = true
+            enableShiftLock()
+        }
+        view.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    lockTriggered = false
+                    v.postDelayed(lockRunnable, 2000L)
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    v.removeCallbacks(lockRunnable)
+                    if (!lockTriggered) {
+                        onShiftTap()
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    v.removeCallbacks(lockRunnable)
+                    true
+                }
+                else -> false
+            }
+        }
+        updateShiftKeyAppearance()
+    }
+
+    private fun enableShiftLock() {
         if (keyLayout != KeyLayout.LETTERS) return
-        shiftOn = !shiftOn
+        hapticKey()
+        shiftLocked = true
+        shiftOn = true
         refreshKeyLabels()
+    }
+
+    private fun onShiftTap() {
+        if (keyLayout != KeyLayout.LETTERS) return
+        hapticKey()
+        if (shiftLocked) {
+            clearShiftLock()
+        } else {
+            shiftOn = !shiftOn
+            refreshKeyLabels()
+        }
+    }
+
+    private fun releaseOneShotShift() {
+        shiftOn = false
+        refreshKeyLabels()
+    }
+
+    private fun clearShiftLock() {
+        shiftLocked = false
+        shiftOn = false
+        if (keyLayout == KeyLayout.LETTERS) {
+            refreshKeyLabels()
+        }
     }
 
     private fun refreshKeyLabels() {
@@ -1318,6 +1384,30 @@ class KeyboardService : InputMethodService() {
             val letter = lettersLower[index]
             view.findViewById<TextView>(id).text =
                 if (shiftOn) letter.uppercase() else letter
+        }
+        updateShiftKeyAppearance()
+    }
+
+    private fun updateShiftKeyAppearance() {
+        val view = keyboardView ?: return
+        if (keyLayout != KeyLayout.LETTERS) return
+        view.findViewById<TextView>(R.id.keyShift).apply {
+            text = if (shiftLocked) "⇪" else "⇧"
+            setTextColor(
+                when {
+                    shiftLocked -> if (activeTheme == KeyboardTheme.BLACK) {
+                        0xFF81C784.toInt()
+                    } else {
+                        0xFF1565C0.toInt()
+                    }
+                    shiftOn -> if (activeTheme == KeyboardTheme.BLACK) {
+                        0xFF90CAF9.toInt()
+                    } else {
+                        0xFF1565C0.toInt()
+                    }
+                    else -> keyTextColor
+                },
+            )
         }
     }
 
