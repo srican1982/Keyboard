@@ -72,6 +72,7 @@ class KeyboardService : InputMethodService() {
     private var englishTone = EnglishTone.PROFESSIONAL
     private var lastCommittedWord: String? = null
     private var toolbarExpanded = false
+    private var toolbarCompact = false
 
     private var language = Language.SINHALA
     private var keyLayout = KeyLayout.LETTERS
@@ -199,14 +200,14 @@ class KeyboardService : InputMethodService() {
         btnToolbarExpand?.setOnClickListener {
             hapticKey()
             toolbarExpanded = true
-            updateTopBarMode(hasSuggestions = (suggestionRow?.childCount ?: 0) > 0)
+            updateTopBarMode()
         }
 
         applyKeyLayout()
         applyTheme()
         updateLanguageUi()
         updateRecentEmojiRow()
-        updateTopBarMode(hasSuggestions = false)
+        updateTopBarMode()
         return view
     }
 
@@ -613,7 +614,7 @@ class KeyboardService : InputMethodService() {
         }
         flushEmojiUsageToRecent()
         performEnterAction(ic)
-        clearSuggestions()
+        clearSuggestions(expandToolbar = true)
     }
 
     /** Move quick-bar order only after send, so repeated taps stay in place. */
@@ -802,7 +803,7 @@ class KeyboardService : InputMethodService() {
     private fun updateSinhalaSuggestions() {
         if (sinhalaBuffer.isEmpty()) {
             sinhalaCloudJob?.cancel()
-            clearSuggestions()
+            clearSuggestions(expandToolbar = true)
             return
         }
         val typed = sinhalaBuffer.toString()
@@ -962,14 +963,16 @@ class KeyboardService : InputMethodService() {
         if (sinhalaBuffer.isNotEmpty()) return
         val lastWord = getLastWord(ic)
         if (lastWord.isEmpty()) {
-            clearSuggestions()
+            clearSuggestions(expandToolbar = true)
             return
         }
         val sinhala = language == Language.SINHALA
         val tone = if (sinhala) EnglishTone.PROFESSIONAL else englishTone
         val local = nextWordPredictor.predict(lastWord, sinhala, tone)
         if (local.isEmpty() && !Prefs.isCloudSuggestionsEnabled(this)) {
-            clearSuggestions()
+            renderSuggestions(emptyList()) { candidate ->
+                commitNextWord(candidate)
+            }
             return
         }
         renderSuggestions(local) { candidate ->
@@ -1073,8 +1076,8 @@ class KeyboardService : InputMethodService() {
         items: List<SuggestionCandidate>,
         onPick: (SuggestionCandidate) -> Unit,
     ) {
-        if (items.isNotEmpty()) {
-            toolbarExpanded = false
+        if (items.isNotEmpty() && !toolbarExpanded) {
+            toolbarCompact = true
         }
         val row = suggestionRow ?: return
         row.removeAllViews()
@@ -1116,14 +1119,14 @@ class KeyboardService : InputMethodService() {
             }
             row.addView(chip)
         }
-        updateTopBarMode(hasSuggestions = items.isNotEmpty())
+        updateTopBarMode()
     }
 
-    private fun updateTopBarMode(hasSuggestions: Boolean) {
-        val showSuggestions = hasSuggestions && !toolbarExpanded
-        btnToolbarExpand?.visibility = if (showSuggestions) View.VISIBLE else View.GONE
-        toolbarRow?.visibility = if (showSuggestions) View.GONE else View.VISIBLE
-        suggestionScroll?.visibility = if (showSuggestions) View.VISIBLE else View.GONE
+    private fun updateTopBarMode() {
+        val showSuggestionBar = toolbarCompact && !toolbarExpanded
+        btnToolbarExpand?.visibility = if (showSuggestionBar) View.VISIBLE else View.GONE
+        toolbarRow?.visibility = if (showSuggestionBar) View.GONE else View.VISIBLE
+        suggestionScroll?.visibility = if (showSuggestionBar) View.VISIBLE else View.GONE
     }
 
     private fun updateRecentEmojiBarVisibility() {
@@ -1159,13 +1162,16 @@ class KeyboardService : InputMethodService() {
         return merged.take(14)
     }
 
-    private fun clearSuggestions() {
+    private fun clearSuggestions(expandToolbar: Boolean = false) {
         nextWordJob?.cancel()
         englishCloudJob?.cancel()
         sinhalaCloudJob?.cancel()
         suggestionRow?.removeAllViews()
-        toolbarExpanded = false
-        updateTopBarMode(hasSuggestions = false)
+        if (expandToolbar) {
+            toolbarCompact = false
+            toolbarExpanded = false
+        }
+        updateTopBarMode()
     }
 
     private fun toggleVoiceInput() {
@@ -1315,7 +1321,7 @@ class KeyboardService : InputMethodService() {
     private fun toggleLanguage() {
         if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
         language = if (language == Language.SINHALA) Language.ENGLISH else Language.SINHALA
-        clearSuggestions()
+        clearSuggestions(expandToolbar = true)
         updateLanguageUi()
     }
 
@@ -1477,7 +1483,7 @@ class KeyboardService : InputMethodService() {
         updateEnterKey(attribute)
         sinhalaBuffer.clear()
         clearComposingText()
-        clearSuggestions()
+        clearSuggestions(expandToolbar = true)
         lastCommittedWord = null
         if (!restarting) {
             keyLayout = defaultLayoutFor(attribute)
@@ -1502,7 +1508,7 @@ class KeyboardService : InputMethodService() {
     override fun onFinishInput() {
         sinhalaBuffer.clear()
         clearComposingText()
-        clearSuggestions()
+        clearSuggestions(expandToolbar = true)
         super.onFinishInput()
     }
 
