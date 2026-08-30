@@ -86,6 +86,7 @@ class KeyboardService : InputMethodService() {
     private var englishCloudJob: Job? = null
     private var sinhalaCloudJob: Job? = null
     private val emojisSinceSend = LinkedHashSet<String>()
+    private var voicePartialActive = false
 
     private var activeTheme = KeyboardTheme.WHITE
     private var keyTextColor = 0xFF212121.toInt()
@@ -131,9 +132,13 @@ class KeyboardService : InputMethodService() {
         nextWordPredictor = NextWordPredictor(this, typingMemory)
         voiceInputHelper = VoiceInputHelper(
             context = this,
+            onPartial = { text -> updateVoicePartial(text) },
             onFinal = { text -> insertVoiceText(text) },
             onError = { message -> Toast.makeText(this, message, Toast.LENGTH_SHORT).show() },
-            onListeningChanged = { listening -> updateMicButton(listening) },
+            onListeningChanged = { listening ->
+                updateMicButton(listening)
+                if (!listening) finalizeVoiceIfPartial()
+            },
         ).also { it.prepare() }
     }
 
@@ -1191,8 +1196,32 @@ class KeyboardService : InputMethodService() {
         }
         val locale = if (language == Language.SINHALA) "si-LK" else "en-US"
         val continuous = Prefs.isContinuousVoice(this)
+        voicePartialActive = false
         updateMicButton(listening = true)
         helper.start(locale, continuousMode = continuous)
+    }
+
+    private fun updateVoicePartial(text: String) {
+        if (text.isEmpty()) return
+        val ic = currentInputConnection ?: return
+        if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
+            commitSinhalaWord()
+        }
+        if (language == Language.SINHALA) {
+            sinhalaBuffer.clear()
+            clearComposingText()
+        }
+        voicePartialActive = true
+        ic.setComposingText(text, text.length)
+    }
+
+    private fun finalizeVoiceIfPartial() {
+        if (!voicePartialActive) return
+        val ic = currentInputConnection ?: return
+        ic.finishComposingText()
+        ic.commitText(" ", 1)
+        voicePartialActive = false
+        updateNextWordSuggestions()
     }
 
     private fun updateMicButton(listening: Boolean) {
@@ -1253,12 +1282,16 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun insertVoiceText(text: String) {
+        if (text.isEmpty()) return
         val ic = currentInputConnection ?: return
         if (language == Language.SINHALA) {
             sinhalaBuffer.clear()
             clearComposingText()
         }
-        ic.commitText("$text ", 1)
+        ic.setComposingText(text, text.length)
+        ic.finishComposingText()
+        ic.commitText(" ", 1)
+        voicePartialActive = false
         rememberVoiceWords(text.trim())
         updateNextWordSuggestions()
     }
