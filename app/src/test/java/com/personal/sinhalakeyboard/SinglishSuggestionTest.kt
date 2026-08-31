@@ -101,3 +101,9 @@ class SinglishSuggestionTest {
             ),
         )
     }
+
+    @Test
+    fun convertKoIsClean() {
+        assertEquals(KO, SinglishConverter.convert("ko"))
+    }
+}
