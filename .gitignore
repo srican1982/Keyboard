@@ -15,4 +15,3 @@ node_modules/
 *.tgz
 scripts/.verified_word_list_200K.si
 scripts/.word_frequency_list_2M.zip
-app/src/main/assets/sinhala_freq.db
