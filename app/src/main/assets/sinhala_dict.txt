@@ -79,4 +79,6 @@ kohmd|කොහොමද|75
 bng|බැංකුව|70
 bnk|බැංකු|60
 handa|හඳ|90
+hanDa|හඬ|90
+haendha|හැන්ද|88
 haenda|හැන්ද|88

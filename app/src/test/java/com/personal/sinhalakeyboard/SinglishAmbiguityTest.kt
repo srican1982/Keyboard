@@ -77,15 +77,31 @@ class SinglishAmbiguityTest {
     @Test
     fun handaAmbiguity_sanyakaAndStacked() {
         val moon = c("handa") // හඳ (nd → ඳ)
+        val voice = c("hanDa") // හඬ (nD → ඬ)
         val junction = c("han dha")
-        val spoon = c("haen dha")
+        val spoon = c("haendha") // හැන්ද (ndha + ae)
+        assertNotEquals(moon, voice)
         assertNotEquals(moon, junction)
         assertNotEquals(moon, spoon)
-        assertNotEquals(junction, spoon)
+        assertNotEquals(voice, spoon)
         val variants = SinglishAmbiguityVariants.liveVariants("handa")
+        assertTrue(variants.contains("hanDa"))
+        assertTrue(variants.contains("haendha"))
         assertTrue(variants.contains("han dha"))
         assertTrue(variants.contains("haen dha"))
-        assertTrue(variants.contains("haenda"))
+    }
+
+    @Test
+    fun thanAmbiguity_anusvaraAndAdaya() {
+        val tha = c("than") // තන්
+        val thang = c("thang") // තං
+        val thaen = c("thaen") // තැන්
+        assertNotEquals(tha, thang)
+        assertNotEquals(tha, thaen)
+        assertTrue(thang.contains(ANUSVARA))
+        val variants = SinglishAmbiguityVariants.liveVariants("than")
+        assertTrue(variants.contains("thang"))
+        assertTrue(variants.contains("thaen"))
     }
 
     @Test

@@ -146,14 +146,23 @@ object SinglishAmbiguityVariants {
     }
 
     /**
-     * Pre-nasalized vs stacked consonants:
-     * handa→han dha (හන්ද), haen dha (හැන්ද); nd kept for හඳ default.
+     * Pre-nasalized (ඳ/ඬ) vs split න+ද, and æ (ැ):
+     *   handa → හඳ (nda→ඳ), hanDa → හඬ (nDa→ඬ), haendha → හැන්ද (ndha + ae)
      */
     private fun sanyakaClusterVariants(word: String): Set<String> {
         val variants = linkedSetOf<String>()
         val lower = word.lowercase()
 
         if (lower.contains("nda")) {
+            // ඳ (sanyaka dha) is the default — keep typed form as-is.
+            // ඬ (sanyaka da): nda → nDa — e.g. handa → hanDa → හඬ
+            variants.add(word.replaceFirst("nda", "nDa", ignoreCase = true))
+            // න+ද (not pre-nasalized): nda → ndha — e.g. haendha → හැන්ද
+            val ndhaForm = word.replaceFirst("nda", "ndha", ignoreCase = true)
+            variants.add(ndhaForm)
+            for (aeForm in firstVowelAeVariants(ndhaForm)) {
+                variants.add(aeForm)
+            }
             variants.add(word.replaceFirst("nda", "n dha", ignoreCase = true))
             val ndaIndex = lower.indexOf("nda")
             if (ndaIndex > 0 && lower[ndaIndex - 1] == 'a') {

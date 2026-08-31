@@ -73,6 +73,11 @@ class SinglishEngine(
         // Layer 0: words you typed before (personal history)
         typingMemory?.sinhalaSuggestions(p, limit = 5)?.forEach { results.add(it) }
 
+        // Layer 0.5: alternate Sinhala readings (same roman → ඳ/ඬ/න+ද, න/ං, a/æ)
+        for (reading in alternateScriptReadings(p)) {
+            addSinhala(reading, fromCorpus = reading.length > p.length + 4)
+        }
+
         // Layer 1: frequency corpus — Sinhala prefix from typed roman (Desh-style word-first)
         addCorpusSuggestions(p, limit) { addSinhala(it, fromCorpus = true) }
         if (results.size >= limit) return results.take(limit).toList()
@@ -93,18 +98,6 @@ class SinglishEngine(
                 if (results.size >= limit) return results.take(limit).toList()
             }
         if (results.size >= limit) return results.take(limit).toList()
-
-        // Layer 4: live conversion + phonetic ambiguities (fallback chips)
-        val ruleOutput = SinglishConverter.convert(p)
-        if (ruleOutput.isNotEmpty()) {
-            addSinhala(ruleOutput)
-        }
-        for (variant in SinglishAmbiguityVariants.liveVariants(p)) {
-            val sinhala = SinglishConverter.convert(variant)
-            if (sinhala.isNotEmpty() && sinhala != ruleOutput) {
-                addSinhala(sinhala)
-            }
-        }
 
         // Layer 5: keep-as-Singlish (capitalized preview)
         val roman = p.replaceFirstChar { it.uppercaseChar() }
@@ -140,13 +133,22 @@ class SinglishEngine(
 
     private fun sinhalaPrefixCandidates(roman: String): List<String> {
         val candidates = linkedSetOf<String>()
-        val primary = SinglishConverter.convert(roman)
-        if (primary.isNotEmpty()) candidates.add(primary)
-        for (variant in SinglishAmbiguityVariants.liveVariants(roman)) {
-            val sinhala = SinglishConverter.convert(variant)
-            if (sinhala.isNotEmpty()) candidates.add(sinhala)
+        for (reading in alternateScriptReadings(roman)) {
+            candidates.add(reading)
         }
         return candidates.toList()
+    }
+
+    /** One roman keystroke sequence → several valid Sinhala spellings. */
+    private fun alternateScriptReadings(roman: String): List<String> {
+        val readings = linkedSetOf<String>()
+        val primary = SinglishConverter.convert(roman)
+        if (primary.isNotEmpty()) readings.add(primary)
+        for (variant in SinglishAmbiguityVariants.liveVariants(roman)) {
+            val sinhala = SinglishConverter.convert(variant)
+            if (sinhala.isNotEmpty()) readings.add(sinhala)
+        }
+        return readings.toList()
     }
 
     /** Instant roman-word chips for English/Singlish typing — no AI delay. */
