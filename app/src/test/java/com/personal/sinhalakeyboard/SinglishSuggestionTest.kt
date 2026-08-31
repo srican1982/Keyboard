@@ -92,11 +92,11 @@ class SinglishSuggestionTest {
     @Test
     fun corpusLongWordsAreAcceptedWhenFlagged() {
         val longWord = "\u0D85\u0DB1\u0DD2\u0DC0\u0DCF\u0DBB\u0DCA\u0DBA\u0DB1\u0D9C\u0DDA"
-        assertFalse(SinhalaSuggestionRules.isReasonableSinhalaSuggestion(longWord, typedRomanLength = 4))
+        assertFalse(SinhalaSuggestionRules.isReasonableSinhalaSuggestion(longWord, typedRomanLength = 2))
         assertTrue(
             SinhalaSuggestionRules.isReasonableSinhalaSuggestion(
                 longWord,
-                typedRomanLength = 4,
+                typedRomanLength = 2,
                 fromCorpus = true,
             ),
         )
