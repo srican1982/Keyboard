@@ -1,6 +1,7 @@
 package com.personal.sinhalakeyboard
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Anusvara, visarga, and pre-nasalized (sanyaka) consonants. */

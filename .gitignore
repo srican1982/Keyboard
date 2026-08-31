@@ -15,3 +15,4 @@ node_modules/
 *.tgz
 scripts/.verified_word_list_200K.si
 scripts/.word_frequency_list_2M.zip
+scripts/audit_scan_report.txt
