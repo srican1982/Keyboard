@@ -3,13 +3,15 @@ package com.personal.sinhalakeyboard
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import java.io.File
 import java.io.FileOutputStream
+import java.util.zip.GZIPInputStream
 
 /**
- * Frequency-ranked Sinhala words from the UCSC NLP verified list
- * (nlpcuom/Word-Frequency-List-for-Sinhala — ~280k words).
+ * Frequency-ranked Sinhala words from the UCSC NLP 2M corpus
+ * (nlpcuom/Word-Frequency-List-for-Sinhala — ~2.1M words).
  *
- * Queries by Sinhala script prefix — pair with SinglishConverter output while typing.
+ * Ships as gzip-compressed SQLite in assets; decompresses once on first use.
  */
 class SinhalaFrequencyDatabase(context: Context) {
 
@@ -56,27 +58,57 @@ class SinhalaFrequencyDatabase(context: Context) {
 
     companion object {
         private const val TAG = "SinhalaFreqDb"
-        private const val ASSET_NAME = "sinhala_freq.db"
+        private const val ASSET_GZ = "sinhala_freq.db.gz"
+        private const val ASSET_DB = "sinhala_freq.db"
         private const val DB_NAME = "sinhala_freq.db"
 
-        /** Opens (and copies from assets on first run) the frequency dictionary. */
+        /** Opens (and prepares from assets on first run) the frequency dictionary. */
         fun ensureReady(context: Context): SinhalaFrequencyDatabase = SinhalaFrequencyDatabase(context)
 
         private fun openReadOnly(context: Context): SQLiteDatabase? {
             return try {
                 val path = context.getDatabasePath(DB_NAME)
                 if (!path.exists()) {
-                    path.parentFile?.mkdirs()
-                    context.assets.open(ASSET_NAME).use { input ->
-                        FileOutputStream(path).use { output ->
-                            input.copyTo(output)
-                        }
-                    }
+                    prepareDatabase(context, path)
                 }
                 SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to open Sinhala frequency database", e)
                 null
+            }
+        }
+
+        private fun prepareDatabase(context: Context, dest: File) {
+            dest.parentFile?.mkdirs()
+            when {
+                hasAsset(context, ASSET_GZ) -> decompressGzAsset(context, ASSET_GZ, dest)
+                hasAsset(context, ASSET_DB) -> copyAsset(context, ASSET_DB, dest)
+                else -> error("No Sinhala dictionary asset found")
+            }
+        }
+
+        private fun hasAsset(context: Context, name: String): Boolean {
+            return try {
+                context.assets.open(name).close()
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+        private fun copyAsset(context: Context, assetName: String, dest: File) {
+            context.assets.open(assetName).use { input ->
+                FileOutputStream(dest).use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
+
+        private fun decompressGzAsset(context: Context, assetName: String, dest: File) {
+            GZIPInputStream(context.assets.open(assetName)).use { input ->
+                FileOutputStream(dest).use { output ->
+                    input.copyTo(output)
+                }
             }
         }
     }

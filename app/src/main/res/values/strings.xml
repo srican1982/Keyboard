@@ -49,7 +49,7 @@
     <string name="theme_black">Black</string>
     <string name="openrouter_info">Get a key at openrouter.ai/keys — model: google/gemini-3-flash-preview</string>
     <string name="dict_status_title">Sinhala dictionary</string>
-    <string name="dict_status_loading">Loading dictionary…</string>
-    <string name="dict_status_ready">Ready — %1$d words loaded</string>
+    <string name="dict_status_loading">Preparing dictionary (first time may take 30–60 seconds)…</string>
+    <string name="dict_status_ready">Ready — %1$,d words loaded</string>
     <string name="dict_status_missing">Not loaded — open the keyboard once or reinstall the app</string>
 </resources>
