@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_OUT = ROOT / "app" / "src" / "main" / "assets" / "sinhala_freq.db.gz"
+DEFAULT_OUT = ROOT / "app" / "src" / "main" / "assets" / "sinhala_freq.db"
 
 SOURCES = {
     "verified": {
@@ -155,19 +155,18 @@ def gzip_db(db_path: Path, gz_path: Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--source", choices=sorted(SOURCES), default="2m")
+    parser.add_argument("--source", choices=sorted(SOURCES), default="verified")
     parser.add_argument("--input", type=Path, help="Local .si or .zip input file")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUT)
     parser.add_argument("--limit", type=int, default=-1)
-    parser.add_argument("--keep-raw-db", action="store_true")
+    parser.add_argument("--no-gzip", action="store_true", help="Keep raw .db only (default when --out ends with .db)")
+    parser.add_argument("--gzip", action="store_true", help="Also write .db.gz alongside raw .db")
     args = parser.parse_args()
 
     meta = SOURCES[args.source]
     limit = meta["default_limit"] if args.limit < 0 else args.limit
 
-    raw_db = args.out.with_suffix("") if args.out.suffix == ".gz" else args.out
-    if raw_db.suffix != ".db":
-        raw_db = args.out.parent / "sinhala_freq.db"
+    raw_db = args.out if args.out.suffix == ".db" else args.out.parent / "sinhala_freq.db"
 
     if args.input:
         if args.input.suffix.lower() == ".zip":
@@ -182,12 +181,15 @@ def main() -> int:
     raw_mb = raw_db.stat().st_size / (1024 * 1024)
     print(f"Built {count} words -> {raw_db} ({raw_mb:.1f} MB)")
 
+    if not args.gzip and (args.no_gzip or args.out.suffix == ".db"):
+        print(f"Wrote {raw_db} ({raw_mb:.1f} MB)")
+        return 0
+
     gz_path = args.out if args.out.suffix == ".gz" else raw_db.with_suffix(raw_db.suffix + ".gz")
     gzip_db(raw_db, gz_path)
     gz_mb = gz_path.stat().st_size / (1024 * 1024)
     print(f"Wrote {gz_path} ({gz_mb:.1f} MB)")
-    if not args.keep_raw_db and raw_db.exists():
-        raw_db.unlink()
+    raw_db.unlink()
     if gz_mb > 95:
         print("WARNING: compressed DB exceeds ~95 MB — may be too large for GitHub.")
     return 0

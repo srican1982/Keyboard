@@ -18,8 +18,8 @@ class SinglishAmbiguityTest {
 
     @Test
     fun daAmbiguity_dentalAndRetroflex() {
-        assertEquals(DA, c("da"))
-        assertEquals(DHA, c("dha"))
+        assertEquals(DHA, c("da"))
+        assertEquals(DA, c("dha"))
         assertTrue(SinglishAmbiguityVariants.liveVariants("da").contains("dha"))
     }
 
@@ -100,7 +100,12 @@ class SinglishAmbiguityTest {
     @Test
     fun taAmbiguity_murdhajaAndDantaja() {
         assertEquals(TA, c("ta"))
-        assertEquals("\u0DAD", c("tha")) // ත
+        assertEquals("\u0DAD", c("tha"))
         assertTrue(SinglishAmbiguityVariants.liveVariants("ta").contains("tha"))
+    }
+
+    @Test
+    fun nidida_mapsToCommonWord() {
+        assertEquals("\u0DB1\u0DD2\u0DAF\u0DD2\u0DAF", c("nidida"))
     }
 }

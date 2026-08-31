@@ -4,7 +4,7 @@ package com.personal.sinhalakeyboard
  * Singlish → Sinhala transliteration (Helakuru + Google Input Tools vowels).
  *
  * Based on [@siyabasa/singlish](https://github.com/remeinium/singlish) (Apache-2.0)
- * with Google/nongnu-style ae/aee (ඇ/ඈ) and t/th, d/dh (ට/ත, ඩ/ද).
+ * with Google/nongnu-style ae/aee (ඇ/ඈ), Helakuru-style d/D (ද/ඩ), and t/T (ට/ත).
  *
  * Pillam (පිල්ල) — vowel signs on consonants:
  * | Singlish | Pillam              | Example   |
@@ -56,7 +56,7 @@ object SinglishConverter {
         "ph" to "PH",
         "bh" to "BH",
         "th" to "TH",
-        "dh" to "DH",
+        "dh" to "RETROFLEX_D",
         "Sh" to "RETROFLEX_S",
         "sh" to "SH",
         "ng" to "N_G",
@@ -87,7 +87,7 @@ object SinglishConverter {
         "g" to "G",
         "j" to "J",
         "t" to "RETROFLEX_T",
-        "d" to "RETROFLEX_D",
+        "d" to "DH",
         "T" to "RETROFLEX_T",
         "D" to "RETROFLEX_D",
         "n" to "N",

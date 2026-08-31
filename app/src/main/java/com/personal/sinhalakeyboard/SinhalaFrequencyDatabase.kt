@@ -8,10 +8,8 @@ import java.io.FileOutputStream
 import java.util.zip.GZIPInputStream
 
 /**
- * Frequency-ranked Sinhala words from the UCSC NLP 2M corpus
- * (nlpcuom/Word-Frequency-List-for-Sinhala — ~2.1M words).
- *
- * Ships as gzip-compressed SQLite in assets; decompresses once on first use.
+ * Frequency-ranked Sinhala words from the UCSC NLP verified list
+ * (nlpcuom/Word-Frequency-List-for-Sinhala — ~280k words).
  */
 class SinhalaFrequencyDatabase(context: Context) {
 
