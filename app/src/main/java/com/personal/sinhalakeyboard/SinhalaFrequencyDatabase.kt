@@ -2,6 +2,7 @@ package com.personal.sinhalakeyboard
 
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
+import android.util.Log
 import java.io.FileOutputStream
 
 /**
@@ -40,13 +41,26 @@ class SinhalaFrequencyDatabase(context: Context) {
         }
     }
 
+    fun isReady(): Boolean = db != null
+
+    fun wordCount(): Int? {
+        val database = db ?: return null
+        database.rawQuery("SELECT COUNT(*) FROM words", null).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getInt(0) else null
+        }
+    }
+
     fun close() {
         db?.close()
     }
 
     companion object {
+        private const val TAG = "SinhalaFreqDb"
         private const val ASSET_NAME = "sinhala_freq.db"
         private const val DB_NAME = "sinhala_freq.db"
+
+        /** Opens (and copies from assets on first run) the frequency dictionary. */
+        fun ensureReady(context: Context): SinhalaFrequencyDatabase = SinhalaFrequencyDatabase(context)
 
         private fun openReadOnly(context: Context): SQLiteDatabase? {
             return try {
@@ -60,7 +74,8 @@ class SinhalaFrequencyDatabase(context: Context) {
                     }
                 }
                 SQLiteDatabase.openDatabase(path.path, null, SQLiteDatabase.OPEN_READONLY)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to open Sinhala frequency database", e)
                 null
             }
         }

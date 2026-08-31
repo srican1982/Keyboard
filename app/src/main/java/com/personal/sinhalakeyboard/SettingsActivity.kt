@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.RadioButton
 import android.widget.RadioGroup
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -59,6 +60,8 @@ class SettingsActivity : AppCompatActivity() {
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
 
+        warmUpDictionary(findViewById(R.id.dictStatusText))
+
         findViewById<Button>(R.id.btnSave).setOnClickListener {
             Prefs.setApiKey(this, input.text?.toString().orEmpty())
 
@@ -91,5 +94,20 @@ class SettingsActivity : AppCompatActivity() {
 
             Toast.makeText(this, R.string.api_key_saved, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun warmUpDictionary(statusView: TextView) {
+        statusView.setText(R.string.dict_status_loading)
+        Thread {
+            val db = SinhalaFrequencyDatabase.ensureReady(applicationContext)
+            val count = db.wordCount()
+            db.close()
+            runOnUiThread {
+                statusView.text = when (count) {
+                    null -> getString(R.string.dict_status_missing)
+                    else -> getString(R.string.dict_status_ready, count)
+                }
+            }
+        }.start()
     }
 }
