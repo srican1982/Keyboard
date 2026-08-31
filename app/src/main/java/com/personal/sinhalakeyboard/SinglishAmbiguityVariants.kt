@@ -128,6 +128,58 @@ object SinglishAmbiguityVariants {
                     variants.add(stem + "aee")
                 }
             }
+            lower.endsWith("oo") && lower.length > 2 -> {
+                val stem = word.dropLast(2)
+                if (hasConsonantStem(stem)) {
+                    variants.add(stem + "o")
+                }
+            }
+            lower.endsWith("o") && !lower.endsWith("oo") && lower.length > 1 -> {
+                val stem = word.dropLast(1)
+                if (hasConsonantStem(stem)) {
+                    variants.add(stem)
+                    variants.add(stem + "oo")
+                }
+            }
+            lower.endsWith("ee") && lower.length > 2 -> {
+                val stem = word.dropLast(2)
+                if (hasConsonantStem(stem)) {
+                    variants.add(stem + "e")
+                }
+            }
+            lower.endsWith("e") && !lower.endsWith("ee") && !lower.endsWith("ae") && lower.length > 1 -> {
+                val stem = word.dropLast(1)
+                if (hasConsonantStem(stem)) {
+                    variants.add(stem)
+                    variants.add(stem + "ee")
+                }
+            }
+            lower.endsWith("ii") && lower.length > 2 -> {
+                val stem = word.dropLast(2)
+                if (hasConsonantStem(stem)) {
+                    variants.add(stem + "i")
+                }
+            }
+            lower.endsWith("i") && !lower.endsWith("ii") && lower.length > 1 -> {
+                val stem = word.dropLast(1)
+                if (hasConsonantStem(stem)) {
+                    variants.add(stem)
+                    variants.add(stem + "ii")
+                }
+            }
+            lower.endsWith("uu") && lower.length > 2 -> {
+                val stem = word.dropLast(2)
+                if (hasConsonantStem(stem)) {
+                    variants.add(stem + "u")
+                }
+            }
+            lower.endsWith("u") && !lower.endsWith("uu") && lower.length > 1 -> {
+                val stem = word.dropLast(1)
+                if (hasConsonantStem(stem)) {
+                    variants.add(stem)
+                    variants.add(stem + "uu")
+                }
+            }
         }
         return variants
     }
@@ -167,6 +219,9 @@ object SinglishAmbiguityVariants {
             variants.add(ndhaForm)
             for (aeForm in firstVowelAeVariants(ndhaForm)) {
                 variants.add(aeForm)
+            }
+            if (lower == "handa") {
+                variants.add("haendha")
             }
         }
         return variants

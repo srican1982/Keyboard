@@ -71,20 +71,22 @@ class SinglishEngine(
             results.add(SuggestionCandidate(sinhala, sinhala))
         }
 
-        // Layer 0: words you typed before (personal history)
-        typingMemory?.sinhalaSuggestions(p, limit = 5)?.forEach { results.add(it) }
-
-        // Layer 0.5: alternate Sinhala readings (same roman → ඳ/ඬ/න+ද, න/ං, o/oo/aa)
+        // Layer 0: pillam homophones first — ko→කො/කෝ, handa→හඳ/හඬ/හැන්ද
         val homophones = AlternateSinhalaReadings.forRoman(p)
         for (reading in homophones) {
-            addSinhala(reading, fromCorpus = reading.length > p.length + 4)
+            addSinhala(reading)
         }
 
-        // Layer 1: frequency corpus — keep homophones visible in the chip row
-        val corpusBudget = when {
-            homophones.size >= 2 -> minOf(4, (limit - results.size).coerceAtLeast(0))
-            else -> (limit - results.size).coerceAtLeast(0)
+        // Layer 1: words you typed before (personal history)
+        typingMemory?.sinhalaSuggestions(p, limit = 3)?.forEach { candidate ->
+            if (candidate.commitText !in seenSinhala) {
+                seenSinhala.add(candidate.commitText)
+                results.add(candidate)
+            }
         }
+
+        // Layer 2: frequency corpus — never crowd out homophones above
+        val corpusBudget = minOf(4, (limit - results.size).coerceAtLeast(0))
         if (corpusBudget > 0) {
             addCorpusSuggestions(p, corpusBudget) { addSinhala(it, fromCorpus = true) }
         }

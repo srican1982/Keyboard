@@ -19,9 +19,20 @@ class AlternateSinhalaReadingsTest {
     }
 
     @Test
-    fun handa_noSpacedReadings() {
+    fun ko_includesShortAndLongO() {
+        val readings = AlternateSinhalaReadings.forRoman("ko")
+        assertTrue(readings.contains(c("ko"))) // කො
+        assertTrue(readings.contains(c("koo"))) // කෝ
+        assertTrue(SinhalaSuggestionRules.isReasonableSinhalaSuggestion(c("ko"), 2))
+        assertTrue(SinhalaSuggestionRules.isReasonableSinhalaSuggestion(c("koo"), 2))
+    }
+
+    @Test
+    fun handa_includesAllTripleReadings() {
         val readings = AlternateSinhalaReadings.forRoman("handa")
-        assertTrue(readings.contains(c("haendha")))
+        assertTrue(readings.contains(c("handa"))) // හඳ
+        assertTrue(readings.contains(c("hanDa"))) // හඬ
+        assertTrue(readings.contains(c("haendha"))) // හැන්ද
         assertFalse(readings.any { it.contains(' ') })
     }
 }
