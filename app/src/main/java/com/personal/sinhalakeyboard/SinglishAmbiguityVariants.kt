@@ -168,19 +168,6 @@ object SinglishAmbiguityVariants {
             for (aeForm in firstVowelAeVariants(ndhaForm)) {
                 variants.add(aeForm)
             }
-            variants.add(word.replaceFirst("nda", "n dha", ignoreCase = true))
-            val ndaIndex = lower.indexOf("nda")
-            if (ndaIndex > 0 && lower[ndaIndex - 1] == 'a') {
-                val withAe = word.substring(0, ndaIndex - 1) + "ae" +
-                    word.substring(ndaIndex).replaceFirst("nda", "n dha", ignoreCase = true)
-                variants.add(withAe)
-            }
-        }
-        if (lower.contains("nd") && !lower.contains("nda") && !lower.contains("n dha")) {
-            variants.add(word.replaceFirst("nd", "n dh", ignoreCase = true))
-        }
-        if (lower.contains("mb") && lower.length > 2) {
-            variants.add(word.replaceFirst("mb", "m b", ignoreCase = true))
         }
         return variants
     }

@@ -1,6 +1,7 @@
 package com.personal.sinhalakeyboard
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -78,17 +79,17 @@ class SinglishAmbiguityTest {
     fun handaAmbiguity_sanyakaAndStacked() {
         val moon = c("handa") // හඳ (nd → ඳ)
         val voice = c("hanDa") // හඬ (nD → ඬ)
-        val junction = c("han dha")
         val spoon = c("haendha") // හැන්ද (ndha + ae)
         assertNotEquals(moon, voice)
-        assertNotEquals(moon, junction)
         assertNotEquals(moon, spoon)
         assertNotEquals(voice, spoon)
         val variants = SinglishAmbiguityVariants.liveVariants("handa")
         assertTrue(variants.contains("hanDa"))
         assertTrue(variants.contains("haendha"))
-        assertTrue(variants.contains("han dha"))
-        assertTrue(variants.contains("haen dha"))
+        assertFalse(variants.any { it.contains(' ') })
+        val readings = AlternateSinhalaReadings.forRoman("handa")
+        assertTrue(readings.contains(spoon))
+        assertFalse(readings.any { it.contains(' ') })
     }
 
     @Test

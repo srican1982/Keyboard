@@ -80,6 +80,7 @@ bng|බැංකුව|70
 bnk|බැංකු|60
 handa|හඳ|90
 hanDa|හඬ|90
+haendha|හැන්ද|90
 konara|කෝනර|85
 koonara|කෝනර|85
 koonaara|කෝනාර|85

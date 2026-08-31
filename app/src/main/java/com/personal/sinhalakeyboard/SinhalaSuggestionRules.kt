@@ -115,6 +115,6 @@ object SinhalaSuggestionRules {
             return variantKey.length <= originalKey.length + 4 &&
                 variantKey.length + 2 >= originalKey.length
         }
-        return variant.length <= original.length + 3 && variant.length + 2 >= original.length
+        return variant.length <= original.length + 4 && variant.length + 2 >= original.length
     }
 }

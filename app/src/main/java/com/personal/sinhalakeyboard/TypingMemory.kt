@@ -72,8 +72,9 @@ class TypingMemory(context: Context) {
             .take(limit)
             .map { (romanKey, entry) ->
                 val singlishRoman = !containsSinhalaScript(entry.value)
+                val showSinhala = !singlishRoman && containsSinhalaScript(entry.value)
                 SuggestionCandidate(
-                    display = romanKey,
+                    display = if (showSinhala) entry.value else romanKey,
                     commitText = if (singlishRoman) romanKey else entry.value,
                     isPersonal = true,
                     isSinglishRoman = singlishRoman,
