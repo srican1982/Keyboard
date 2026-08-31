@@ -197,12 +197,19 @@ object SinglishConverter {
         var i = 0
         while (i < text.length) {
             var matched = false
-            for ((pattern, phoneme) in singlishToPhoneme) {
-                if (i + pattern.length <= text.length && text.substring(i, i + pattern.length) == pattern) {
-                    phonemes.add(phoneme)
-                    i += pattern.length
-                    matched = true
-                    break
+            if (text[i].equals('n', ignoreCase = true) && shouldUseAnusvaraBefore(text, i + 1)) {
+                phonemes.add("N_G")
+                i++
+                matched = true
+            }
+            if (!matched) {
+                for ((pattern, phoneme) in singlishToPhoneme) {
+                    if (i + pattern.length <= text.length && text.substring(i, i + pattern.length) == pattern) {
+                        phonemes.add(phoneme)
+                        i += pattern.length
+                        matched = true
+                        break
+                    }
                 }
             }
             if (!matched) {
@@ -211,6 +218,18 @@ object SinglishConverter {
             }
         }
         return phonemes
+    }
+
+    /**
+     * Lazy Singlish: n before k/g/… omits g (sank → sangk) — emit bindu (ං) on prior syllable.
+     * Skips nd/ng clusters (handled as ඳ / ඟ+sanyaka).
+     */
+    private fun shouldUseAnusvaraBefore(text: String, fromIndex: Int): Boolean {
+        if (fromIndex >= text.length) return false
+        val lower = text.substring(fromIndex).lowercase()
+        if (lower.startsWith("nd") || lower.startsWith("ng")) return false
+        val triggers = listOf("th", "dh", "k", "g", "c", "j", "t", "p", "b", "m", "s", "h")
+        return triggers.any { lower.startsWith(it) }
     }
 
     private fun phonemesToSinhala(phonemes: List<String>): String {

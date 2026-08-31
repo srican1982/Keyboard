@@ -15,6 +15,13 @@ class SinglishSpecialMarksTest {
         assertEquals("\u0DC3$ANUSVARA\u0D9A", c("sangka")) // සංක
     }
 
+    @Test fun anusvara_lazyNBeforeK() {
+        assertEquals("\u0DC3$ANUSVARA\u0D9A", c("sanka")) // sank → සංක (no g)
+        assertEquals("\u0DC3$ANUSVARA\u0D9A\u0DC0", c("sankayawa").substring(0, 4)) // සංක… prefix
+        assertTrue(c("sankayawa").startsWith("\u0DC3$ANUSVARA\u0D9A"))
+        assertEquals("\u0DBD$ANUSVARA\u0D9A\u0DCF", c("lanka")) // ලංකා
+    }
+
     @Test fun anusvara_xShortcut() {
         assertEquals("\u0DC3$ANUSVARA\u0DAD", c("saxtha")) // සංථ (x = anusvara)
     }

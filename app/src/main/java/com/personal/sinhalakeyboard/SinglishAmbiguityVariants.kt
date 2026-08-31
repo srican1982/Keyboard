@@ -22,6 +22,7 @@ object SinglishAmbiguityVariants {
             variants.addAll(consonantDentalsVariants(word))
             variants.addAll(sanyakaClusterVariants(word))
             variants.addAll(anusvaraVariants(word))
+            variants.addAll(anusvaraLazyNgVariants(word))
             variants.addAll(existingHomophoneVariants(word))
         }
         variants.remove(word)
@@ -239,6 +240,26 @@ object SinglishAmbiguityVariants {
         }
         if (word.endsWith('n') && !word.endsWith("ng")) {
             variants.add(word.dropLast(1) + "ng")
+        }
+        return variants
+    }
+
+    /** Insert g after n before velars — sank↔sangk (bindu spelling). */
+    private fun anusvaraLazyNgVariants(word: String): Set<String> {
+        val variants = linkedSetOf<String>()
+        val lower = word.lowercase()
+        val triggers = listOf("k", "g", "c", "j", "t", "p", "b", "m", "s", "h")
+        var i = 0
+        while (i < word.length - 1) {
+            if (word[i].equals('n', ignoreCase = true)) {
+                val tail = lower.substring(i + 1)
+                if (!tail.startsWith("d") && !tail.startsWith("g") &&
+                    triggers.any { tail.startsWith(it) }
+                ) {
+                    variants.add(word.substring(0, i + 1) + "g" + word.substring(i + 1))
+                }
+            }
+            i++
         }
         return variants
     }
