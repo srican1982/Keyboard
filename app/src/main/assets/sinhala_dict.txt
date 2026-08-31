@@ -84,3 +84,4 @@ konara|කෝනර|85
 koonara|කෝනර|85
 koonaara|කෝනාර|85
 kooNaara|කෝණාර|85
+sambhawithawa|සම්භාවිතාව|90

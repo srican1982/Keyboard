@@ -204,6 +204,7 @@ object SinglishConverter {
             }
             if (!matched) {
                 for ((pattern, phoneme) in singlishToPhoneme) {
+                    if (!shouldMatchSinglishPattern(text, i, pattern)) continue
                     if (i + pattern.length <= text.length && text.substring(i, i + pattern.length) == pattern) {
                         phonemes.add(phoneme)
                         i += pattern.length
@@ -218,6 +219,16 @@ object SinglishConverter {
             }
         }
         return phonemes
+    }
+
+    /**
+     * sambha → sam+bh (ම්+භ), not sanyaka ba (ඹ). Keep mb→ඹ for kambaya etc.
+     */
+    private fun shouldMatchSinglishPattern(text: String, index: Int, pattern: String): Boolean {
+        if (pattern == "mb" && index + 2 < text.length && text[index + 2].equals('h', ignoreCase = true)) {
+            return false
+        }
+        return true
     }
 
     /**
@@ -409,7 +420,11 @@ object SinglishConverter {
                         i += 2
                     }
                     next != null && isInherentA(next) -> {
-                        output.append(consonantChar)
+                        if (shouldUseLongAForInherentVowel(current, phonemes, i)) {
+                            output.append(consonantChar).append(vowelModifier.getValue("V_AA"))
+                        } else {
+                            output.append(consonantChar)
+                        }
                         i += 2
                     }
                     next != null && (isConsonant(next) || isSanyaka(next) || next == "N_G") -> {
@@ -481,4 +496,19 @@ object SinglishConverter {
     private fun isVowelModifier(token: String) = token in vowelModifierSet
     private fun isWordBoundary(token: String) = token in wordBoundary
     private fun isConjunctable(token: String) = token == "Y" || token == "R_CONS"
+
+    /** Roman "bha+wi" / "tha+wa" often omit the second a: sambhawithawa → සම්භාවිතාව. */
+    private fun shouldUseLongAForInherentVowel(
+        consonant: String,
+        phonemes: List<String>,
+        index: Int,
+    ): Boolean {
+        val afterA = phonemes.getOrNull(index + 2)
+        val afterCluster = phonemes.getOrNull(index + 3)
+        return when (consonant) {
+            "BH" -> afterA == "V_CONS" && afterCluster == "V_I"
+            "TH" -> afterA == "V_CONS" && afterCluster == "V_A"
+            else -> false
+        }
+    }
 }

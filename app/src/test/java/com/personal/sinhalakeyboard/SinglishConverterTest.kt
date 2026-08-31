@@ -130,4 +130,16 @@ class SinglishConverterTest {
             c("prashna"),
         ) // ප්‍රශ්න
     }
+
+    @Test fun sambhawithawa_samPlusBhaNotSanyakaBa() {
+        // සම්භාවිතාව — mb before bh is m+භ, not ඹ; lazy a→aa in bha+wi and tha+wa
+        assertEquals(
+            "\u0DC3\u0DB8\u0DCA\u0DB7\u0DCF\u0DC0\u0DD2\u0DAD\u0DCF\u0DC0",
+            c("sambhawithawa"),
+        )
+    }
+
+    @Test fun kambaya_keepsMbAsSanyakaBa() {
+        assertEquals("\u0D9A\u0DB9", c("kamb")) // කඹ
+    }
 }

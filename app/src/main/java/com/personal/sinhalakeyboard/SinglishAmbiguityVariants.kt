@@ -210,21 +210,35 @@ object SinglishAmbiguityVariants {
         val lower = word.lowercase()
         val vowels = "aeiou"
 
+        val lengthenedOoEe = linkedSetOf<String>()
         for (i in word.indices) {
             if (lower[i] == 'o' && !lower.regionMatches(i, "oo", 0, 2)) {
                 val next = lower.getOrNull(i + 1)
                 if (next != null && next !in vowels) {
-                    variants.add(word.substring(0, i) + "oo" + word.substring(i + 1))
+                    lengthenedOoEe.add(word.substring(0, i) + "oo" + word.substring(i + 1))
                 }
             }
             if (lower[i] == 'e' && !lower.regionMatches(i, "ee", 0, 2)) {
                 val next = lower.getOrNull(i + 1)
                 if (next != null && next !in vowels) {
-                    variants.add(word.substring(0, i) + "ee" + word.substring(i + 1))
+                    lengthenedOoEe.add(word.substring(0, i) + "ee" + word.substring(i + 1))
                 }
             }
         }
+        variants.addAll(lengthenedOoEe)
+        variants.addAll(lengthenConsonantSandwichVowels(word))
+        for (form in lengthenedOoEe) {
+            variants.addAll(lengthenConsonantSandwichVowels(form))
+        }
 
+        return variants
+    }
+
+    /** a/i/u between consonants → aa/ii/uu (e.g. koonara → koonaara). */
+    private fun lengthenConsonantSandwichVowels(word: String): Set<String> {
+        val variants = linkedSetOf<String>()
+        val lower = word.lowercase()
+        val vowels = "aeiou"
         for (i in 1 until word.length - 1) {
             val prev = lower[i - 1]
             val ch = lower[i]
@@ -240,7 +254,6 @@ object SinglishAmbiguityVariants {
                 }
             }
         }
-
         return variants
     }
 
