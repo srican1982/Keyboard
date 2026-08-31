@@ -19,7 +19,8 @@ class SinglishAmbiguityTest {
     @Test
     fun daAmbiguity_dentalAndRetroflex() {
         assertEquals(DHA, c("da"))
-        assertEquals(DA, c("dha"))
+        assertEquals(DHA, c("dha"))
+        assertEquals(DA, c("Da"))
         assertTrue(SinglishAmbiguityVariants.liveVariants("da").contains("dha"))
     }
 

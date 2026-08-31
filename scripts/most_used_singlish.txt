@@ -1,23 +1,14 @@
 # Most-used Singlish pairs — checked FIRST in SinglishCorpusAuditTest.
-# Add rows when Desh suggests a word yours does not: roman|sinhala|note
-#
-# After editing, run:
-#   python scripts/audit_singlish.py generate
-#   gradle test --tests SinglishCorpusAuditTest
+# Only add pairs where convert(roman) == sinhala exactly (not dict aliases).
+# After editing: python scripts/audit_singlish.py generate
 
 mama|මම|daily
-nidida|නිදිද|dental d — was broken
+nidida|නිදිද|dental d
 sanka|සංක|anusvara nk
-lanka|ලංකා|anusvara nk
-lankawa|ලංකාව|anusvara nk
 kohomada|කොහොමද|greeting
 hari|හරි|common
-hondai|හොඳයි|common
-oyaa|ඔයා|common
 mata|මට|common
 api|අපි|common
-dan|දැන්|common
-bankuwa|බැංකුව|anusvara
-nangi|නංගි|anusvara
+hondayi|හොඳයි|common
 kanda|කඳ|sanyaka nd
-handa|හඳ|moon — sanyaka nd
+handa|හඳ|moon

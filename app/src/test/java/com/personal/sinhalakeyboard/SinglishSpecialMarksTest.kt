@@ -19,7 +19,7 @@ class SinglishSpecialMarksTest {
     @Test fun anusvara_lazyNBeforeK() {
         assertEquals("\u0DC3$ANUSVARA\u0D9A", c("sanka")) // sank → සංක (no g)
         assertTrue(c("sankayawa").startsWith("\u0DC3$ANUSVARA\u0D9A"))
-        assertEquals("\u0DBD$ANUSVARA\u0D9A\u0DCF", c("lanka")) // ලංකා
+        assertEquals("\u0DBD$ANUSVARA\u0D9A", c("lanka")) // ලංක (inherent a; use lankaa for ර)
     }
 
     @Test fun anusvara_xShortcut() {

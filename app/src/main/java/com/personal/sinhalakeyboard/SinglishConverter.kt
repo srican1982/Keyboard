@@ -56,7 +56,7 @@ object SinglishConverter {
         "ph" to "PH",
         "bh" to "BH",
         "th" to "TH",
-        "dh" to "RETROFLEX_D",
+        "dh" to "DH",
         "Sh" to "RETROFLEX_S",
         "sh" to "SH",
         "ng" to "N_G",
@@ -227,8 +227,8 @@ object SinglishConverter {
     private fun shouldUseAnusvaraBefore(text: String, fromIndex: Int): Boolean {
         if (fromIndex >= text.length) return false
         val lower = text.substring(fromIndex).lowercase()
-        if (lower.startsWith("nd") || lower.startsWith("ng")) return false
-        val triggers = listOf("th", "dh", "k", "g", "c", "j", "t", "p", "b", "m", "s", "h")
+        if (lower.startsWith("nd") || lower.startsWith("ng") || lower.startsWith("g")) return false
+        val triggers = listOf("th", "dh", "k", "c", "j", "t", "p", "b", "m", "s", "h")
         return triggers.any { lower.startsWith(it) }
     }
 
