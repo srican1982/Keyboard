@@ -17,6 +17,7 @@ object SinglishAmbiguityVariants {
         if (word.length >= 2) {
             variants.addAll(consonantVowelStemVariants(word))
             variants.addAll(vowelLengthVariants(word))
+            variants.addAll(internalSyllableVowelVariants(word))
             variants.addAll(vowelAeVariants(word))
             variants.addAll(firstVowelAeVariants(word))
             variants.addAll(consonantDentalsVariants(word))
@@ -24,6 +25,10 @@ object SinglishAmbiguityVariants {
             variants.addAll(anusvaraVariants(word))
             variants.addAll(anusvaraLazyNgVariants(word))
             variants.addAll(existingHomophoneVariants(word))
+            val derived = variants.toList()
+            for (spelling in derived) {
+                variants.addAll(existingHomophoneVariants(spelling))
+            }
         }
         variants.remove(word)
         return variants.filter { SinhalaSuggestionRules.isReasonableSpellingVariant(word, it) }.toSet()
@@ -194,6 +199,48 @@ object SinglishAmbiguityVariants {
         toggleSuffix(word, "i", "ii", variants) { !word.endsWith("ii") }
         toggleSuffix(word, "uu", "u", variants)
         toggleSuffix(word, "u", "uu", variants) { !word.endsWith("uu") }
+        return variants
+    }
+
+    /**
+     * Mid-word pillam: ko→koo, na→naa (e.g. konara → කෝනර / කෝනාර / කෝණාර).
+     */
+    private fun internalSyllableVowelVariants(word: String): Set<String> {
+        val variants = linkedSetOf<String>()
+        val lower = word.lowercase()
+        val vowels = "aeiou"
+
+        for (i in word.indices) {
+            if (lower[i] == 'o' && !lower.regionMatches(i, "oo", 0, 2)) {
+                val next = lower.getOrNull(i + 1)
+                if (next != null && next !in vowels) {
+                    variants.add(word.substring(0, i) + "oo" + word.substring(i + 1))
+                }
+            }
+            if (lower[i] == 'e' && !lower.regionMatches(i, "ee", 0, 2)) {
+                val next = lower.getOrNull(i + 1)
+                if (next != null && next !in vowels) {
+                    variants.add(word.substring(0, i) + "ee" + word.substring(i + 1))
+                }
+            }
+        }
+
+        for (i in 1 until word.length - 1) {
+            val prev = lower[i - 1]
+            val ch = lower[i]
+            val next = lower[i + 1]
+            if (prev !in vowels && next !in vowels) {
+                when {
+                    ch == 'a' && !lower.regionMatches(i, "aa", 0, 2) ->
+                        variants.add(word.substring(0, i) + "aa" + word.substring(i + 1))
+                    ch == 'i' && !lower.regionMatches(i, "ii", 0, 2) ->
+                        variants.add(word.substring(0, i) + "ii" + word.substring(i + 1))
+                    ch == 'u' && !lower.regionMatches(i, "uu", 0, 2) ->
+                        variants.add(word.substring(0, i) + "uu" + word.substring(i + 1))
+                }
+            }
+        }
+
         return variants
     }
 

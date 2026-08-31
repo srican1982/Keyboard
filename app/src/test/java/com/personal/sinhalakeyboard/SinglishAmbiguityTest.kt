@@ -122,7 +122,17 @@ class SinglishAmbiguityTest {
     }
 
     @Test
-    fun nidida_mapsToCommonWord() {
-        assertEquals("\u0DB1\u0DD2\u0DAF\u0DD2\u0DAF", c("nidida"))
+    fun konaraAmbiguity_longVowelsAndNa() {
+        val shortO = c("konara") // කොනර
+        val longO = c("koonara") // කෝනර
+        val longA = c("koonaara") // කෝනාර
+        val retroN = c("kooNaara") // කෝණාර
+        assertNotEquals(shortO, longO)
+        assertNotEquals(longO, longA)
+        assertNotEquals(longA, retroN)
+        val variants = SinglishAmbiguityVariants.liveVariants("konara")
+        assertTrue(variants.contains("koonara"))
+        assertTrue(variants.contains("koonaara"))
+        assertTrue(variants.contains("kooNaara"))
     }
 }
