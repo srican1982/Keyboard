@@ -1610,6 +1610,7 @@ class KeyboardService : InputMethodService() {
         voiceInputHelper?.destroy()
         voiceInputHelper = null
         englishSuggestions.close()
+        if (::singlishEngine.isInitialized) singlishEngine.close()
         scope.cancel()
         super.onDestroy()
     }

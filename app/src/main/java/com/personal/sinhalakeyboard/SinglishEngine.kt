@@ -13,9 +13,14 @@ class SinglishEngine(
 
     private val dictionary: MutableMap<String, String> = mutableMapOf()
     private val frequency: MutableMap<String, Int> = mutableMapOf()
+    private val corpusDb = SinhalaFrequencyDatabase(context)
 
     init {
         loadDictionary(context)
+    }
+
+    fun close() {
+        corpusDb.close()
     }
 
     private fun loadDictionary(context: Context) {
@@ -56,31 +61,26 @@ class SinglishEngine(
 
         val lower = p.lowercase()
         val results = LinkedHashSet<SuggestionCandidate>()
+        val seenSinhala = HashSet<String>()
 
-        fun addSinhala(sinhala: String) {
-            if (!SinhalaSuggestionRules.isReasonableSinhalaSuggestion(sinhala, p.length)) return
+        fun addSinhala(sinhala: String, fromCorpus: Boolean = false) {
+            if (sinhala in seenSinhala) return
+            if (!SinhalaSuggestionRules.isReasonableSinhalaSuggestion(sinhala, p.length, fromCorpus)) return
+            seenSinhala.add(sinhala)
             results.add(SuggestionCandidate(sinhala, sinhala))
         }
 
         // Layer 0: words you typed before (personal history)
         typingMemory?.sinhalaSuggestions(p, limit = 5)?.forEach { results.add(it) }
 
-        // Layer 0.5: longer roman dictionary words (e.g. ko → koheda, kohomada)
+        // Layer 1: frequency corpus — Sinhala prefix from typed roman (Desh-style word-first)
+        addCorpusSuggestions(p, limit) { addSinhala(it, fromCorpus = true) }
+        if (results.size >= limit) return results.take(limit).toList()
+
+        // Layer 2: longer roman dictionary words (e.g. ko → koheda, kohomada)
         addRomanDictionaryPrefixes(lower, results, limit)
 
-        // Layer 1: live conversion + phonetic ambiguities (කො/කෝ for ko) — always before dictionary
-        val ruleOutput = SinglishConverter.convert(p)
-        if (ruleOutput.isNotEmpty()) {
-            addSinhala(ruleOutput)
-        }
-        for (variant in SinglishAmbiguityVariants.liveVariants(p)) {
-            val sinhala = SinglishConverter.convert(variant)
-            if (sinhala.isNotEmpty() && sinhala != ruleOutput) {
-                addSinhala(sinhala)
-            }
-        }
-
-        // Layer 2: dictionary prefix + lazy spellings
+        // Layer 3: manual dictionary prefix + lazy spellings
         dictionary.entries
             .filter { it.key.startsWith(lower) || fuzzyMatch(it.key, lower) }
             .sortedWith(
@@ -92,12 +92,61 @@ class SinglishEngine(
                 addSinhala(sinhala)
                 if (results.size >= limit) return results.take(limit).toList()
             }
+        if (results.size >= limit) return results.take(limit).toList()
 
-        // Layer 3: keep-as-Singlish (capitalized preview)
+        // Layer 4: live conversion + phonetic ambiguities (fallback chips)
+        val ruleOutput = SinglishConverter.convert(p)
+        if (ruleOutput.isNotEmpty()) {
+            addSinhala(ruleOutput)
+        }
+        for (variant in SinglishAmbiguityVariants.liveVariants(p)) {
+            val sinhala = SinglishConverter.convert(variant)
+            if (sinhala.isNotEmpty() && sinhala != ruleOutput) {
+                addSinhala(sinhala)
+            }
+        }
+
+        // Layer 5: keep-as-Singlish (capitalized preview)
         val roman = p.replaceFirstChar { it.uppercaseChar() }
         results.add(SuggestionCandidate(roman, p, isRoman = true))
 
         return results.take(limit).toList()
+    }
+
+    private fun addCorpusSuggestions(
+        roman: String,
+        limit: Int,
+        add: (String) -> Unit,
+    ) {
+        val prefixes = sinhalaPrefixCandidates(roman)
+        if (prefixes.isEmpty()) return
+
+        val merged = LinkedHashMap<String, Int>()
+        val perPrefix = (limit * 2).coerceAtMost(24)
+        for (prefix in prefixes) {
+            for (entry in corpusDb.queryByPrefix(prefix, perPrefix)) {
+                val prev = merged[entry.word]
+                if (prev == null || entry.frequency > prev) {
+                    merged[entry.word] = entry.frequency
+                }
+            }
+        }
+
+        merged.entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key.length })
+            .take(limit)
+            .forEach { (word, _) -> add(word) }
+    }
+
+    private fun sinhalaPrefixCandidates(roman: String): List<String> {
+        val candidates = linkedSetOf<String>()
+        val primary = SinglishConverter.convert(roman)
+        if (primary.isNotEmpty()) candidates.add(primary)
+        for (variant in SinglishAmbiguityVariants.liveVariants(roman)) {
+            val sinhala = SinglishConverter.convert(variant)
+            if (sinhala.isNotEmpty()) candidates.add(sinhala)
+        }
+        return candidates.toList()
     }
 
     /** Instant roman-word chips for English/Singlish typing — no AI delay. */

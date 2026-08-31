@@ -60,11 +60,16 @@ object SinhalaSuggestionRules {
         return true
     }
 
-    fun isReasonableSinhalaSuggestion(sinhala: String, typedRomanLength: Int): Boolean {
+    fun isReasonableSinhalaSuggestion(
+        sinhala: String,
+        typedRomanLength: Int,
+        fromCorpus: Boolean = false,
+    ): Boolean {
         if (sinhala.isEmpty()) return false
 
-        val maxLen = (typedRomanLength * 2 + 6).coerceIn(4, 20)
+        val maxLen = if (fromCorpus) 48 else (typedRomanLength * 2 + 6).coerceIn(4, 20)
         if (sinhala.length > maxLen) return false
+        if (fromCorpus) return true
 
         var matraRun = 0
         var maxMatraRun = 0

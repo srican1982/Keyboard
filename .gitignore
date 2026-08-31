@@ -13,3 +13,4 @@
 *.hprof
 node_modules/
 *.tgz
+scripts/.verified_word_list_200K.si
