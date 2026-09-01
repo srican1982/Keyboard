@@ -28,27 +28,27 @@ object OpenRouterHelper {
     }
 
     fun extractAssistantText(responseBody: String): String {
-        val json = JSONObject(responseBody)
-        val choice = json.getJSONArray("choices").getJSONObject(0)
-        val message = choice.getJSONObject("message")
+        return try {
+            val json = JSONObject(responseBody.trim())
+            val message = json.optJSONArray("choices")?.optJSONObject(0)?.optJSONObject("message")
+                ?: return ""
 
-        message.optString("content").trim().takeIf { it.isNotEmpty() }?.let { return it }
+            message.optString("content").trim().takeIf { it.isNotEmpty() }?.let { return it }
 
-        message.optString("reasoning").trim().takeIf { it.isNotEmpty() }?.let { return it }
+            message.optString("reasoning").trim().takeIf { it.isNotEmpty() }?.let { return it }
 
-        extractFromReasoningDetails(message.optJSONArray("reasoning_details"))
-            ?.takeIf { it.isNotEmpty() }
-            ?.let { return it }
+            extractFromReasoningDetails(message.optJSONArray("reasoning_details"))
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { return it }
 
-        message.optString("refusal").trim().takeIf { it.isNotEmpty() }?.let { return it }
+            message.optString("refusal").trim().takeIf { it.isNotEmpty() }?.let { return it }
 
-        // Some Gemini 3 error responses have null content and no reasoning text.
-        val finishReason = choice.optString("finish_reason")
-        if (finishReason == "error") {
-            val nativeReason = choice.optString("native_finish_reason")
-            if (nativeReason.isNotEmpty()) return ""
+            val choice = json.optJSONArray("choices")?.optJSONObject(0) ?: return ""
+            if (choice.optString("finish_reason") == "error") return ""
+            ""
+        } catch (_: Exception) {
+            ""
         }
-        return ""
     }
 
     private fun extractFromReasoningDetails(details: JSONArray?): String? {
