@@ -86,6 +86,8 @@ class KeyboardService : InputMethodService() {
     private var nextWordJob: Job? = null
     private var englishCloudJob: Job? = null
     private var sinhalaCloudJob: Job? = null
+    private var sinhalaLocalSuggestJob: Job? = null
+    private var englishLocalSuggestJob: Job? = null
     private val emojisSinceSend = LinkedHashSet<String>()
 
     private var activeTheme = KeyboardTheme.WHITE
@@ -97,6 +99,10 @@ class KeyboardService : InputMethodService() {
 
     private val sinhalaSuggestRunnable = Runnable { updateSinhalaSuggestions() }
     private val englishSuggestRunnable = Runnable { updateEnglishSuggestions() }
+
+    private companion object {
+        const val SUGGEST_DEBOUNCE_MS = 60L
+    }
 
     private val letterKeyIds = listOf(
         R.id.keyQ, R.id.keyW, R.id.keyE, R.id.keyR, R.id.keyT, R.id.keyY, R.id.keyU,
@@ -578,6 +584,7 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun onLetter(letter: String) {
+        hapticKey()
         beginTypingCompactMode()
         val ch = if (shiftOn) letter.uppercase() else letter
         if (language == Language.ENGLISH) {
@@ -590,17 +597,16 @@ class KeyboardService : InputMethodService() {
             updateComposingText()
             scheduleSinhalaSuggestions()
         }
-        hapticKey()
     }
 
     private fun scheduleSinhalaSuggestions() {
         keyboardView?.removeCallbacks(sinhalaSuggestRunnable)
-        keyboardView?.post(sinhalaSuggestRunnable)
+        keyboardView?.postDelayed(sinhalaSuggestRunnable, SUGGEST_DEBOUNCE_MS)
     }
 
     private fun scheduleEnglishSuggestions() {
         keyboardView?.removeCallbacks(englishSuggestRunnable)
-        keyboardView?.post(englishSuggestRunnable)
+        keyboardView?.postDelayed(englishSuggestRunnable, SUGGEST_DEBOUNCE_MS)
     }
 
     private fun onSpace() {
@@ -714,7 +720,7 @@ class KeyboardService : InputMethodService() {
     private fun refreshAfterBackspace() {
         if (language == Language.SINHALA) {
             if (sinhalaBuffer.isNotEmpty()) {
-                updateSinhalaSuggestions()
+                scheduleSinhalaSuggestions()
             } else {
                 val ic = currentInputConnection ?: return
                 if (getCurrentWord(ic).isEmpty()) updateNextWordSuggestions()
@@ -723,7 +729,7 @@ class KeyboardService : InputMethodService() {
         }
         val ic = currentInputConnection ?: return
         if (getCurrentWord(ic).isEmpty()) updateNextWordSuggestions()
-        else updateEnglishSuggestions()
+        else scheduleEnglishSuggestions()
     }
 
     private fun commitSinhalaWord(sinhala: String? = null, trailingSpace: Boolean = false) {
@@ -816,15 +822,21 @@ class KeyboardService : InputMethodService() {
     private fun updateSinhalaSuggestions() {
         if (sinhalaBuffer.isEmpty()) {
             sinhalaCloudJob?.cancel()
+            sinhalaLocalSuggestJob?.cancel()
             clearSuggestions(expandToolbar = true)
             return
         }
         val typed = sinhalaBuffer.toString()
         sinhalaCloudJob?.cancel()
-        val items = singlishEngine.suggestions(typed)
-        if (sinhalaBuffer.toString() != typed) return
-        renderSuggestions(items) { pickSinhalaSuggestion(it) }
-        fetchSinhalaCloudWordCompletions(typed, items)
+        sinhalaLocalSuggestJob?.cancel()
+        sinhalaLocalSuggestJob = scope.launch {
+            val items = withContext(Dispatchers.Default) {
+                singlishEngine.suggestions(typed)
+            }
+            if (sinhalaBuffer.toString() != typed) return@launch
+            renderSuggestions(items) { pickSinhalaSuggestion(it) }
+            fetchSinhalaCloudWordCompletions(typed, items)
+        }
     }
 
     private fun fetchSinhalaCloudWordCompletions(
@@ -896,24 +908,36 @@ class KeyboardService : InputMethodService() {
         val word = getCurrentWord(ic)
         if (word.isEmpty()) {
             englishCloudJob?.cancel()
+            englishLocalSuggestJob?.cancel()
             updateNextWordSuggestions()
             return
         }
         englishCloudJob?.cancel()
+        englishLocalSuggestJob?.cancel()
+        englishLocalSuggestJob = scope.launch {
+            val instantSinglish = withContext(Dispatchers.Default) {
+                singlishEngine.romanPrefixSuggestions(word, limit = 10)
+            }
+            val liveIc = currentInputConnection ?: return@launch
+            if (getCurrentWord(liveIc) != word) return@launch
+            if (instantSinglish.isNotEmpty()) {
+                renderEnglishSuggestions(word, instantSinglish)
+            }
 
-        val instantSinglish = singlishEngine.romanPrefixSuggestions(word, limit = 10)
-        if (instantSinglish.isNotEmpty()) {
-            renderEnglishSuggestions(word, instantSinglish)
-        }
-
-        englishSuggestions.suggest(word) { englishItems ->
-            val liveIc = currentInputConnection ?: return@suggest
-            val liveWord = getCurrentWord(liveIc)
-            if (liveWord != word) return@suggest
-            val singlish = singlishEngine.romanPrefixSuggestions(liveWord, limit = 10)
-            val merged = mergeSinglishFirst(singlish, englishItems)
-            renderEnglishSuggestions(liveWord, merged)
-            fetchEnglishCloudWordCompletions(liveWord, merged)
+            englishSuggestions.suggest(word) { englishItems ->
+                scope.launch {
+                    val callbackIc = currentInputConnection ?: return@launch
+                    val liveWord = getCurrentWord(callbackIc)
+                    if (liveWord != word) return@launch
+                    val merged = withContext(Dispatchers.Default) {
+                        val singlish = singlishEngine.romanPrefixSuggestions(liveWord, limit = 10)
+                        mergeSinglishFirst(singlish, englishItems)
+                    }
+                    if (getCurrentWord(currentInputConnection ?: return@launch) != liveWord) return@launch
+                    renderEnglishSuggestions(liveWord, merged)
+                    fetchEnglishCloudWordCompletions(liveWord, merged)
+                }
+            }
         }
     }
 
@@ -1093,46 +1117,64 @@ class KeyboardService : InputMethodService() {
             toolbarCompact = true
         }
         val row = suggestionRow ?: return
-        row.removeAllViews()
-        items.forEach { candidate ->
-            val chip = TextView(this).apply {
-                text = candidate.display
-                textSize = 15f
-                maxLines = 1
-                ellipsize = android.text.TextUtils.TruncateAt.END
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    letterSpacing = 0.05f
-                }
-                setTextColor(
-                    when {
-                        candidate.isPersonal -> if (activeTheme == KeyboardTheme.BLACK) {
-                            0xFFFFB74D.toInt()
-                        } else {
-                            0xFFE65100.toInt()
-                        }
-                        candidate.isCloud -> if (activeTheme == KeyboardTheme.BLACK) {
-                            0xFF90CAF9.toInt()
-                        } else {
-                            0xFF1565C0.toInt()
-                        }
-                        candidate.isRoman -> romanSuggestionColor
-                        else -> sinhalaSuggestionColor
-                    },
-                )
-                setPadding(20, 8, 20, 8)
-                setBackgroundResource(suggestionChipBg)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT,
-                ).apply { marginEnd = 6 }
-                setOnClickListener {
-                    hapticKey()
-                    onPick(candidate)
-                }
+        for (index in items.indices) {
+            val chip = if (index < row.childCount) {
+                row.getChildAt(index) as TextView
+            } else {
+                createSuggestionChip().also { row.addView(it) }
             }
-            row.addView(chip)
+            bindSuggestionChip(chip, items[index], onPick)
+            chip.visibility = View.VISIBLE
+        }
+        for (index in items.size until row.childCount) {
+            row.getChildAt(index).visibility = View.GONE
         }
         updateTopBarMode()
+    }
+
+    private fun createSuggestionChip(): TextView =
+        TextView(this).apply {
+            textSize = 15f
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                letterSpacing = 0.05f
+            }
+            setPadding(20, 8, 20, 8)
+            setBackgroundResource(suggestionChipBg)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { marginEnd = 6 }
+        }
+
+    private fun bindSuggestionChip(
+        chip: TextView,
+        candidate: SuggestionCandidate,
+        onPick: (SuggestionCandidate) -> Unit,
+    ) {
+        chip.text = candidate.display
+        chip.setBackgroundResource(suggestionChipBg)
+        chip.setTextColor(
+            when {
+                candidate.isPersonal -> if (activeTheme == KeyboardTheme.BLACK) {
+                    0xFFFFB74D.toInt()
+                } else {
+                    0xFFE65100.toInt()
+                }
+                candidate.isCloud -> if (activeTheme == KeyboardTheme.BLACK) {
+                    0xFF90CAF9.toInt()
+                } else {
+                    0xFF1565C0.toInt()
+                }
+                candidate.isRoman -> romanSuggestionColor
+                else -> sinhalaSuggestionColor
+            },
+        )
+        chip.setOnClickListener {
+            hapticKey()
+            onPick(candidate)
+        }
     }
 
     private fun updateTopBarMode() {
@@ -1179,7 +1221,13 @@ class KeyboardService : InputMethodService() {
         nextWordJob?.cancel()
         englishCloudJob?.cancel()
         sinhalaCloudJob?.cancel()
-        suggestionRow?.removeAllViews()
+        sinhalaLocalSuggestJob?.cancel()
+        englishLocalSuggestJob?.cancel()
+        suggestionRow?.let { row ->
+            for (index in 0 until row.childCount) {
+                row.getChildAt(index).visibility = View.GONE
+            }
+        }
         if (expandToolbar) {
             toolbarCompact = false
             toolbarExpanded = false
