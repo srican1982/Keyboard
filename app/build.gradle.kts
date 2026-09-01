@@ -11,8 +11,8 @@ android {
         applicationId = "com.personal.sinhalakeyboard"
         minSdk = 26
         targetSdk = 34
-        versionCode = 79
-        versionName = "2.16.4"
+        versionCode = 80
+        versionName = "2.16.5"
     }
 
     buildTypes {
@@ -42,4 +42,6 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
     testImplementation("junit:junit:4.13.2")
+    // Real org.json for JVM unit tests (android.jar stubs do not parse JSON).
+    testImplementation("org.json:json:20240303")
 }
