@@ -152,7 +152,7 @@ class CloudSuggestionService {
             val body = JSONObject().apply {
                 put("model", GrammarFixer.MODEL)
                 put("max_tokens", maxTokens)
-                OpenRouterHelper.applyMinimalReasoning(this)
+                OpenRouterHelper.applyModelOptions(this, GrammarFixer.MODEL)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "system")

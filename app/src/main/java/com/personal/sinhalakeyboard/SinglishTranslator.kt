@@ -31,7 +31,7 @@ class SinglishTranslator {
             val body = JSONObject().apply {
                 put("model", MODEL)
                 put("max_tokens", 4096)
-                OpenRouterHelper.applyMinimalReasoning(this)
+                OpenRouterHelper.applyModelOptions(this, MODEL)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "system")

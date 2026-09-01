@@ -4,7 +4,7 @@ Personal Android keyboard:
 
 - **Singlish → Sinhala** — `thaththa` → `තාත්තා`
 - **English mode** — normal typing
-- **Grammar fix** — OpenRouter + `google/gemini-3-flash-preview`
+- **Grammar fix** — OpenRouter + `google/gemini-2.5-flash`
 
 ---
 

@@ -858,8 +858,8 @@ class KeyboardService : InputMethodService() {
                 apiKey = apiKey,
             )
             if (sinhalaBuffer.toString() != partialSinglish) return@launch
-            cloudResult.onFailure {
-                Toast.makeText(this@KeyboardService, R.string.cloud_suggestions_error, Toast.LENGTH_SHORT).show()
+            cloudResult.onFailure { e ->
+                toastOpenRouterFailure(e)
                 return@launch
             }
             val cloudWords = cloudResult.getOrNull().orEmpty()
@@ -984,8 +984,8 @@ class KeyboardService : InputMethodService() {
                 tone = englishTone,
             )
             if (getCurrentWord(currentInputConnection ?: return@launch) != partialWord) return@launch
-            cloudResult.onFailure {
-                Toast.makeText(this@KeyboardService, R.string.cloud_suggestions_error, Toast.LENGTH_SHORT).show()
+            cloudResult.onFailure { e ->
+                toastOpenRouterFailure(e)
                 return@launch
             }
             val cloudWords = cloudResult.getOrNull().orEmpty()
@@ -1049,8 +1049,8 @@ class KeyboardService : InputMethodService() {
                 )
             }
             if (getLastWord(currentInputConnection ?: return@launch) != lastWord) return@launch
-            cloudResult.onFailure {
-                Toast.makeText(this@KeyboardService, R.string.cloud_suggestions_error, Toast.LENGTH_SHORT).show()
+            cloudResult.onFailure { e ->
+                toastOpenRouterFailure(e)
                 return@launch
             }
             val cloudWords = cloudResult.getOrNull().orEmpty()
@@ -1538,8 +1538,8 @@ class KeyboardService : InputMethodService() {
 
             result.onSuccess { corrected ->
                 replaceFieldText(ic, corrected)
-            }.onFailure {
-                Toast.makeText(this@KeyboardService, R.string.grammar_error, Toast.LENGTH_SHORT).show()
+            }.onFailure { e ->
+                toastOpenRouterFailure(e)
             }
         }
     }
@@ -1575,8 +1575,8 @@ class KeyboardService : InputMethodService() {
             result.onSuccess { translated ->
                 replaceFieldText(ic, translated)
                 clearSuggestions()
-            }.onFailure {
-                Toast.makeText(this@KeyboardService, R.string.translate_error, Toast.LENGTH_SHORT).show()
+            }.onFailure { e ->
+                toastOpenRouterFailure(e)
             }
         }
     }
@@ -1665,6 +1665,11 @@ class KeyboardService : InputMethodService() {
         clearComposingText()
         clearSuggestions(expandToolbar = true)
         super.onFinishInput()
+    }
+
+    private fun toastOpenRouterFailure(cause: Throwable?) {
+        val msg = OpenRouterHelper.userMessageForFailure(cause?.message.orEmpty())
+        Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
     }
 
     override fun onDestroy() {

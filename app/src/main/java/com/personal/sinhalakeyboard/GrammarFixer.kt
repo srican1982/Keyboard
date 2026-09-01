@@ -13,7 +13,8 @@ import java.util.concurrent.TimeUnit
 class GrammarFixer {
 
     companion object {
-        const val MODEL = "google/gemini-3-flash-preview"
+        // Stable text model — gemini-3-* often returns empty content unless reasoning is tuned.
+        const val MODEL = "google/gemini-2.5-flash"
         private const val API_URL = "https://openrouter.ai/api/v1/chat/completions"
     }
 
@@ -34,7 +35,7 @@ class GrammarFixer {
             val body = JSONObject().apply {
                 put("model", MODEL)
                 put("max_tokens", 4096)
-                OpenRouterHelper.applyMinimalReasoning(this)
+                OpenRouterHelper.applyModelOptions(this, MODEL)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "system")
