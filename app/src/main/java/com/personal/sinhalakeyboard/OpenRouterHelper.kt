@@ -7,22 +7,22 @@ import org.json.JSONObject
 object OpenRouterHelper {
 
     /**
-     * Gemini 3+ models default to "thinking" mode and may put the answer in [message.reasoning]
-     * instead of [message.content]. Prefer gemini-2.5-flash for simple keyboard tasks.
+     * OpenRouter now defaults Gemini 3 to "thinking" mode, which can leave [message.content]
+     * empty on simple keyboard calls. Keep effort minimal and exclude reasoning from the reply
+     * so the answer stays in content like before.
      */
     fun applyModelOptions(body: JSONObject, model: String) {
-        if (needsMinimalReasoning(model)) {
-            body.put(
-                "reasoning",
-                JSONObject().apply {
-                    put("effort", "minimal")
-                    put("exclude", true)
-                },
-            )
-        }
+        if (!isGemini3Family(model)) return
+        body.put(
+            "reasoning",
+            JSONObject().apply {
+                put("effort", "minimal")
+                put("exclude", true)
+            },
+        )
     }
 
-    private fun needsMinimalReasoning(model: String): Boolean {
+    private fun isGemini3Family(model: String): Boolean {
         val id = model.substringAfter('/')
         return id.startsWith("gemini-3") || id.startsWith("gemini-3.")
     }
@@ -78,7 +78,7 @@ object OpenRouterHelper {
             raw.contains("429") ->
                 "OpenRouter rate limit — try again in a moment"
             raw.contains("empty content", ignoreCase = true) ->
-                "AI returned no text — model may have changed; update the app"
+                "AI returned no text — check OpenRouter credits and try again"
             else -> "OpenRouter request failed — check key, credits, and internet"
         }
     }

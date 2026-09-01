@@ -48,7 +48,7 @@
     <string name="theme_title">Keyboard theme</string>
     <string name="theme_white">White</string>
     <string name="theme_black">Black</string>
-    <string name="openrouter_info">Get a key at openrouter.ai/keys — model: google/gemini-2.5-flash</string>
+    <string name="openrouter_info">Get a key at openrouter.ai/keys — model: google/gemini-3-flash-preview</string>
     <string name="dict_status_title">Sinhala dictionary</string>
     <string name="dict_status_loading">Loading dictionary…</string>
     <string name="dict_status_ready">Ready — %1$,d words loaded</string>

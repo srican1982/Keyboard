@@ -13,8 +13,7 @@ import java.util.concurrent.TimeUnit
 class GrammarFixer {
 
     companion object {
-        // Stable text model — gemini-3-* often returns empty content unless reasoning is tuned.
-        const val MODEL = "google/gemini-2.5-flash"
+        const val MODEL = "google/gemini-3-flash-preview"
         private const val API_URL = "https://openrouter.ai/api/v1/chat/completions"
     }
 
