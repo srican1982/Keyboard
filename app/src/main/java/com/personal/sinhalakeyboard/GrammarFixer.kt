@@ -34,6 +34,7 @@ class GrammarFixer {
             val body = JSONObject().apply {
                 put("model", MODEL)
                 put("max_tokens", 4096)
+                OpenRouterHelper.applyMinimalReasoning(this)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "system")
@@ -73,14 +74,12 @@ class GrammarFixer {
                     )
                 }
 
-                val json = JSONObject(responseBody)
-                val corrected = json
-                    .getJSONArray("choices")
-                    .getJSONObject(0)
-                    .getJSONObject("message")
-                    .getString("content")
-                    .trim()
-
+                val corrected = OpenRouterHelper.extractAssistantText(responseBody)
+                if (corrected.isBlank()) {
+                    return@withContext Result.failure(
+                        IllegalStateException("OpenRouter returned empty content")
+                    )
+                }
                 Result.success(corrected)
             }
         } catch (e: Exception) {

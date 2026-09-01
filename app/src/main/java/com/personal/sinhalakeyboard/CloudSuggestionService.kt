@@ -152,6 +152,7 @@ class CloudSuggestionService {
             val body = JSONObject().apply {
                 put("model", GrammarFixer.MODEL)
                 put("max_tokens", maxTokens)
+                OpenRouterHelper.applyMinimalReasoning(this)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "system")
@@ -178,12 +179,10 @@ class CloudSuggestionService {
                 if (!response.isSuccessful) {
                     return Result.failure(IllegalStateException("OpenRouter ${response.code}"))
                 }
-                val content = JSONObject(responseBody)
-                    .getJSONArray("choices")
-                    .getJSONObject(0)
-                    .getJSONObject("message")
-                    .getString("content")
-                    .trim()
+                val content = OpenRouterHelper.extractAssistantText(responseBody)
+                if (content.isBlank()) {
+                    return Result.failure(IllegalStateException("OpenRouter returned empty content"))
+                }
                 Result.success(parseWordList(content, limit))
             }
         } catch (e: Exception) {

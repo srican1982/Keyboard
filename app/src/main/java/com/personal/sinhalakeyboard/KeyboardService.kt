@@ -821,13 +821,12 @@ class KeyboardService : InputMethodService() {
 
     private fun updateSinhalaSuggestions() {
         if (sinhalaBuffer.isEmpty()) {
-            sinhalaCloudJob?.cancel()
             sinhalaLocalSuggestJob?.cancel()
+            sinhalaCloudJob?.cancel()
             clearSuggestions(expandToolbar = true)
             return
         }
         val typed = sinhalaBuffer.toString()
-        sinhalaCloudJob?.cancel()
         sinhalaLocalSuggestJob?.cancel()
         sinhalaLocalSuggestJob = scope.launch {
             val items = withContext(Dispatchers.Default) {
@@ -858,6 +857,11 @@ class KeyboardService : InputMethodService() {
                 partialSinglish = partialSinglish,
                 apiKey = apiKey,
             )
+            if (sinhalaBuffer.toString() != partialSinglish) return@launch
+            cloudResult.onFailure {
+                Toast.makeText(this@KeyboardService, R.string.cloud_suggestions_error, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
             val cloudWords = cloudResult.getOrNull().orEmpty()
                 .filter { containsSinhalaScript(it) }
             if (cloudWords.isEmpty()) return@launch
@@ -907,36 +911,36 @@ class KeyboardService : InputMethodService() {
         val ic = currentInputConnection ?: return
         val word = getCurrentWord(ic)
         if (word.isEmpty()) {
-            englishCloudJob?.cancel()
             englishLocalSuggestJob?.cancel()
+            englishCloudJob?.cancel()
             updateNextWordSuggestions()
             return
         }
-        englishCloudJob?.cancel()
+        val wordSnapshot = word
         englishLocalSuggestJob?.cancel()
         englishLocalSuggestJob = scope.launch {
             val instantSinglish = withContext(Dispatchers.Default) {
-                singlishEngine.romanPrefixSuggestions(word, limit = 10)
+                singlishEngine.romanPrefixSuggestions(wordSnapshot, limit = 10)
             }
             val liveIc = currentInputConnection ?: return@launch
-            if (getCurrentWord(liveIc) != word) return@launch
+            if (getCurrentWord(liveIc) != wordSnapshot) return@launch
             if (instantSinglish.isNotEmpty()) {
-                renderEnglishSuggestions(word, instantSinglish)
+                renderEnglishSuggestions(wordSnapshot, instantSinglish)
             }
+        }
 
-            englishSuggestions.suggest(word) { englishItems ->
-                scope.launch {
-                    val callbackIc = currentInputConnection ?: return@launch
-                    val liveWord = getCurrentWord(callbackIc)
-                    if (liveWord != word) return@launch
-                    val merged = withContext(Dispatchers.Default) {
-                        val singlish = singlishEngine.romanPrefixSuggestions(liveWord, limit = 10)
-                        mergeSinglishFirst(singlish, englishItems)
-                    }
-                    if (getCurrentWord(currentInputConnection ?: return@launch) != liveWord) return@launch
-                    renderEnglishSuggestions(liveWord, merged)
-                    fetchEnglishCloudWordCompletions(liveWord, merged)
+        englishSuggestions.suggest(wordSnapshot) { englishItems ->
+            scope.launch {
+                val callbackIc = currentInputConnection ?: return@launch
+                val liveWord = getCurrentWord(callbackIc)
+                if (liveWord != wordSnapshot) return@launch
+                val merged = withContext(Dispatchers.Default) {
+                    val singlish = singlishEngine.romanPrefixSuggestions(liveWord, limit = 10)
+                    mergeSinglishFirst(singlish, englishItems)
                 }
+                if (getCurrentWord(currentInputConnection ?: return@launch) != liveWord) return@launch
+                renderEnglishSuggestions(liveWord, merged)
+                fetchEnglishCloudWordCompletions(liveWord, merged)
             }
         }
     }
@@ -979,6 +983,11 @@ class KeyboardService : InputMethodService() {
                 apiKey = apiKey,
                 tone = englishTone,
             )
+            if (getCurrentWord(currentInputConnection ?: return@launch) != partialWord) return@launch
+            cloudResult.onFailure {
+                Toast.makeText(this@KeyboardService, R.string.cloud_suggestions_error, Toast.LENGTH_SHORT).show()
+                return@launch
+            }
             val cloudWords = cloudResult.getOrNull().orEmpty()
             if (cloudWords.isEmpty()) return@launch
             if (getCurrentWord(currentInputConnection ?: return@launch) != partialWord) return@launch
@@ -1038,6 +1047,11 @@ class KeyboardService : InputMethodService() {
                     apiKey = apiKey,
                     tone = tone,
                 )
+            }
+            if (getLastWord(currentInputConnection ?: return@launch) != lastWord) return@launch
+            cloudResult.onFailure {
+                Toast.makeText(this@KeyboardService, R.string.cloud_suggestions_error, Toast.LENGTH_SHORT).show()
+                return@launch
             }
             val cloudWords = cloudResult.getOrNull().orEmpty()
                 .let { if (sinhala) it.filter { w -> containsSinhalaScript(w) } else it }

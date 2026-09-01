@@ -31,6 +31,7 @@ class SinglishTranslator {
             val body = JSONObject().apply {
                 put("model", MODEL)
                 put("max_tokens", 4096)
+                OpenRouterHelper.applyMinimalReasoning(this)
                 put("messages", JSONArray().apply {
                     put(JSONObject().apply {
                         put("role", "system")
@@ -66,13 +67,12 @@ class SinglishTranslator {
                         IllegalStateException("OpenRouter error ${response.code}: $responseBody")
                     )
                 }
-                val json = JSONObject(responseBody)
-                val translated = json
-                    .getJSONArray("choices")
-                    .getJSONObject(0)
-                    .getJSONObject("message")
-                    .getString("content")
-                    .trim()
+                val translated = OpenRouterHelper.extractAssistantText(responseBody)
+                if (translated.isBlank()) {
+                    return@withContext Result.failure(
+                        IllegalStateException("OpenRouter returned empty content")
+                    )
+                }
                 Result.success(translated)
             }
         } catch (e: Exception) {
