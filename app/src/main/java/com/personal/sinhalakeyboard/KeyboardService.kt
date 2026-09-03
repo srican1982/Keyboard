@@ -169,8 +169,8 @@ class KeyboardService : InputMethodService() {
             insertEmoji(emoji)
         }.also { it.bind() }
 
-        btnTonePro?.setOnClickListener { setEnglishTone(EnglishTone.PROFESSIONAL) }
-        btnToneFriendly?.setOnClickListener { setEnglishTone(EnglishTone.FRIENDLY) }
+        btnTonePro?.let { setupInstantKey(it) { setEnglishTone(EnglishTone.PROFESSIONAL) } }
+        btnToneFriendly?.let { setupInstantKey(it) { setEnglishTone(EnglishTone.FRIENDLY) } }
 
         val backspaceHandler = object {
             fun onInitial() = onBackspaceTap()
@@ -197,17 +197,19 @@ class KeyboardService : InputMethodService() {
             onRepeat = { backspaceHandler.onRepeat() },
             onRelease = { backspaceHandler.onRelease() },
         )
-        view.findViewById<TextView>(R.id.keySpace).setOnClickListener { onSpace() }
-        keyEnter?.setOnClickListener { onEnter() }
+        setupInstantKey(view.findViewById(R.id.keySpace)) { onSpace() }
+        keyEnter?.let { setupInstantKey(it) { onEnter() } }
 
-        keyLangBottom?.setOnClickListener { toggleLanguage() }
-        btnMic?.setOnClickListener { toggleVoiceInput() }
-        btnFix?.setOnClickListener { fixGrammar() }
-        btnToEnglish?.setOnClickListener { translateSinglishToEnglish() }
-        btnToolbarExpand?.setOnClickListener {
-            hapticKey()
-            toolbarExpanded = true
-            updateTopBarMode()
+        keyLangBottom?.let { setupInstantKey(it) { toggleLanguage() } }
+        btnMic?.let { setupInstantKey(it) { toggleVoiceInput() } }
+        btnFix?.let { setupInstantKey(it) { fixGrammar() } }
+        btnToEnglish?.let { setupInstantKey(it) { translateSinglishToEnglish() } }
+        btnToolbarExpand?.let {
+            setupInstantKey(it) {
+                hapticKey()
+                toolbarExpanded = true
+                updateTopBarMode()
+            }
         }
 
         applyKeyLayout()
@@ -364,10 +366,10 @@ class KeyboardService : InputMethodService() {
             textSize = 16f
         }
         clearKeyTouchListener(view.findViewById(R.id.keyComma))
-        view.findViewById<View>(R.id.keyComma).setOnClickListener { showLettersLayout() }
+        setupInstantKey(view.findViewById(R.id.keyComma)) { showLettersLayout() }
         view.findViewById<TextView>(R.id.keyNumbers).apply {
             text = "123"
-            setOnClickListener { showNumbersLayout() }
+            setupInstantKey(this) { showNumbersLayout() }
         }
     }
 
@@ -376,7 +378,7 @@ class KeyboardService : InputMethodService() {
             val letter = lettersLower[index]
             view.findViewById<TextView>(id).apply {
                 text = letter
-                setOnClickListener { onLetter(letter) }
+                setupInstantKey(this) { onLetter(letter) }
             }
         }
         view.findViewById<TextView>(R.id.keyShift).apply {
@@ -384,7 +386,7 @@ class KeyboardService : InputMethodService() {
         }
         view.findViewById<TextView>(R.id.keyNumbers).apply {
             text = "123"
-            setOnClickListener { showNumbersLayout() }
+            setupInstantKey(this) { showNumbersLayout() }
         }
         view.findViewById<View>(R.id.keyCommaEmoji).visibility = View.VISIBLE
         view.findViewById<TextView>(R.id.keyCommaSymbol).apply {
@@ -395,7 +397,7 @@ class KeyboardService : InputMethodService() {
         setupEmojiCommaKey(view.findViewById(R.id.keyComma))
         view.findViewById<TextView>(R.id.keyPeriod).apply {
             text = "."
-            setOnClickListener { commitDirect(".") }
+            setupInstantKey(this) { commitDirect(".") }
         }
     }
 
@@ -404,11 +406,11 @@ class KeyboardService : InputMethodService() {
         view.findViewById<TextView>(R.id.keyShift).apply {
             text = "#+="
             clearKeyTouchListener(this)
-            setOnClickListener { showSymbolsLayout() }
+            setupInstantKey(this) { showSymbolsLayout() }
         }
         view.findViewById<TextView>(R.id.keyNumbers).apply {
             text = "ABC"
-            setOnClickListener { showLettersLayout() }
+            setupInstantKey(this) { showLettersLayout() }
         }
         view.findViewById<View>(R.id.keyCommaEmoji).visibility = View.GONE
         view.findViewById<TextView>(R.id.keyCommaSymbol).apply {
@@ -417,10 +419,10 @@ class KeyboardService : InputMethodService() {
             textSize = 18f
         }
         clearKeyTouchListener(view.findViewById(R.id.keyComma))
-        view.findViewById<View>(R.id.keyComma).setOnClickListener { commitDirect(",") }
+        setupInstantKey(view.findViewById(R.id.keyComma)) { commitDirect(",") }
         view.findViewById<TextView>(R.id.keyPeriod).apply {
             text = "."
-            setOnClickListener { commitDirect(".") }
+            setupInstantKey(this) { commitDirect(".") }
         }
     }
 
@@ -429,11 +431,11 @@ class KeyboardService : InputMethodService() {
         view.findViewById<TextView>(R.id.keyShift).apply {
             text = "123"
             clearKeyTouchListener(this)
-            setOnClickListener { showNumbersLayout() }
+            setupInstantKey(this) { showNumbersLayout() }
         }
         view.findViewById<TextView>(R.id.keyNumbers).apply {
             text = "ABC"
-            setOnClickListener { showLettersLayout() }
+            setupInstantKey(this) { showLettersLayout() }
         }
         view.findViewById<View>(R.id.keyCommaEmoji).visibility = View.GONE
         view.findViewById<TextView>(R.id.keyCommaSymbol).apply {
@@ -442,10 +444,10 @@ class KeyboardService : InputMethodService() {
             textSize = 18f
         }
         clearKeyTouchListener(view.findViewById(R.id.keyComma))
-        view.findViewById<View>(R.id.keyComma).setOnClickListener { commitDirect(",") }
+        setupInstantKey(view.findViewById(R.id.keyComma)) { commitDirect(",") }
         view.findViewById<TextView>(R.id.keyPeriod).apply {
             text = "."
-            setOnClickListener { commitDirect(".") }
+            setupInstantKey(this) { commitDirect(".") }
         }
     }
 
@@ -465,10 +467,11 @@ class KeyboardService : InputMethodService() {
                 text = label
                 if (label.isEmpty()) {
                     setOnClickListener(null)
+                    setOnTouchListener(null)
                     isClickable = false
                 } else {
                     isClickable = true
-                    setOnClickListener { commitDirect(label) }
+                    setupInstantKey(this) { commitDirect(label) }
                 }
             }
         }
@@ -500,6 +503,26 @@ class KeyboardService : InputMethodService() {
         if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
         keyLayout = KeyLayout.SYMBOLS
         applyKeyLayout()
+    }
+
+    /** Fire on finger down so light taps register immediately (not on finger lift). */
+    private fun setupInstantKey(view: View, onPress: () -> Unit) {
+        view.setOnClickListener(null)
+        view.isClickable = true
+        view.setOnTouchListener { v, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> {
+                    v.isPressed = true
+                    onPress()
+                    true
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    v.isPressed = false
+                    true
+                }
+                else -> true
+            }
+        }
     }
 
     private fun setupRepeatKey(
