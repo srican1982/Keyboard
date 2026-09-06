@@ -48,6 +48,7 @@ class KeyboardService : InputMethodService() {
     private lateinit var englishSuggestions: EnglishSuggestions
     private lateinit var nextWordPredictor: NextWordPredictor
     private lateinit var typingMemory: TypingMemory
+    private lateinit var personalHistory: PersonalHistoryDatabase
 
     private var keyboardView: View? = null
     private var suggestionRow: LinearLayout? = null
@@ -133,9 +134,10 @@ class KeyboardService : InputMethodService() {
     override fun onCreate() {
         super.onCreate()
         typingMemory = TypingMemory(this)
-        singlishEngine = SinglishEngine(this, typingMemory)
-        englishSuggestions = EnglishSuggestions(this, typingMemory)
-        nextWordPredictor = NextWordPredictor(this, typingMemory)
+        personalHistory = PersonalHistoryDatabase(this)
+        singlishEngine = SinglishEngine(this, personalHistory, typingMemory)
+        englishSuggestions = EnglishSuggestions(this, personalHistory)
+        nextWordPredictor = NextWordPredictor(this, typingMemory, personalHistory)
         voiceInputHelper = VoiceInputHelper(
             context = this,
             onFinal = { text -> insertVoiceText(text) },
@@ -772,11 +774,13 @@ class KeyboardService : InputMethodService() {
         if (cleaned.isEmpty()) return
         val sinhala = language == Language.SINHALA
         if (sinhala) {
+            personalHistory.increment(cleaned, PersonalHistoryDatabase.MODE_SINHALA)
             val key = roman?.trim().orEmpty()
             if (key.isNotEmpty()) {
                 typingMemory.rememberSinhala(key, cleaned)
             }
         } else {
+            personalHistory.increment(cleaned, PersonalHistoryDatabase.MODE_ENGLISH)
             typingMemory.rememberEnglish(cleaned)
         }
         lastCommittedWord?.let { prev ->
@@ -797,23 +801,6 @@ class KeyboardService : InputMethodService() {
             }
             lastCommittedWord = token
         }
-    }
-
-    private fun commitRomanWord(roman: String, trailingSpace: Boolean = false) {
-        val out = if (trailingSpace) "$roman " else roman
-        currentInputConnection?.commitText(out, 1)
-        rememberWordCommitted(roman, roman)
-        sinhalaBuffer.clear()
-        clearComposingText()
-        clearSuggestions()
-        if (trailingSpace) updateNextWordSuggestions()
-    }
-
-    private fun commitSinglishRomanAsSinhala(roman: String, trailingSpace: Boolean = false) {
-        val sinhala = singlishEngine.transliterate(roman)
-        sinhalaBuffer.clear()
-        sinhalaBuffer.append(roman)
-        commitSinhalaWord(sinhala, trailingSpace)
     }
 
     private fun commitDirect(text: String) {
@@ -843,6 +830,7 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun updateSinhalaSuggestions() {
+        if (language != Language.SINHALA) return
         if (sinhalaBuffer.isEmpty()) {
             sinhalaLocalSuggestJob?.cancel()
             sinhalaCloudJob?.cancel()
@@ -853,7 +841,7 @@ class KeyboardService : InputMethodService() {
         sinhalaLocalSuggestJob?.cancel()
         sinhalaLocalSuggestJob = scope.launch {
             val items = withContext(Dispatchers.Default) {
-                singlishEngine.suggestions(typed)
+                singlishEngine.sinhalaSuggestions(typed)
             }
             if (sinhalaBuffer.toString() != typed) return@launch
             renderSuggestions(items) { pickSinhalaSuggestion(it) }
@@ -907,30 +895,12 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun pickSinhalaSuggestion(candidate: SuggestionCandidate) {
-        when {
-            candidate.isSinglishRoman -> {
-                if (language == Language.SINHALA) {
-                    commitSinglishRomanAsSinhala(candidate.commitText, trailingSpace = true)
-                } else {
-                    commitRomanWord(candidate.commitText, trailingSpace = true)
-                }
-                typingMemory.rememberSinglishRoman(candidate.commitText)
-            }
-            candidate.isRoman -> {
-                if (language == Language.SINHALA) {
-                    commitSinglishRomanAsSinhala(candidate.commitText, trailingSpace = true)
-                } else {
-                    commitRomanWord(candidate.commitText, trailingSpace = true)
-                }
-            }
-            else -> {
-                commitSinhalaWord(candidate.commitText, trailingSpace = true)
-                clearSuggestions()
-            }
-        }
+        commitSinhalaWord(candidate.commitText, trailingSpace = true)
+        clearSuggestions()
     }
 
     private fun updateEnglishSuggestions() {
+        if (language != Language.ENGLISH) return
         val ic = currentInputConnection ?: return
         val word = getCurrentWord(ic)
         if (word.isEmpty()) {
@@ -942,44 +912,20 @@ class KeyboardService : InputMethodService() {
         val wordSnapshot = word
         englishLocalSuggestJob?.cancel()
         englishLocalSuggestJob = scope.launch {
-            val instantSinglish = withContext(Dispatchers.Default) {
-                singlishEngine.romanPrefixSuggestions(wordSnapshot, limit = 10)
-            }
-            val liveIc = currentInputConnection ?: return@launch
-            if (getCurrentWord(liveIc) != wordSnapshot) return@launch
-            if (instantSinglish.isNotEmpty()) {
-                renderEnglishSuggestions(wordSnapshot, instantSinglish)
-            }
-        }
-
-        englishSuggestions.suggest(wordSnapshot) { englishItems ->
-            scope.launch {
-                val callbackIc = currentInputConnection ?: return@launch
-                val liveWord = getCurrentWord(callbackIc)
-                if (liveWord != wordSnapshot) return@launch
-                val merged = withContext(Dispatchers.Default) {
-                    val singlish = singlishEngine.romanPrefixSuggestions(liveWord, limit = 10)
-                    mergeSinglishFirst(singlish, englishItems)
+            englishSuggestions.suggest(wordSnapshot) { englishItems ->
+                scope.launch {
+                    if (language != Language.ENGLISH) return@launch
+                    val callbackIc = currentInputConnection ?: return@launch
+                    if (getCurrentWord(callbackIc) != wordSnapshot) return@launch
+                    renderEnglishSuggestions(wordSnapshot, englishItems)
+                    fetchEnglishCloudWordCompletions(wordSnapshot, englishItems)
                 }
-                if (getCurrentWord(currentInputConnection ?: return@launch) != liveWord) return@launch
-                renderEnglishSuggestions(liveWord, merged)
-                fetchEnglishCloudWordCompletions(liveWord, merged)
             }
         }
     }
 
     private fun renderEnglishSuggestions(partialWord: String, items: List<SuggestionCandidate>) {
         renderSuggestions(items) { pickEnglishSuggestion(it, partialWord) }
-    }
-
-    private fun mergeSinglishFirst(
-        singlish: List<SuggestionCandidate>,
-        english: List<SuggestionCandidate>,
-    ): List<SuggestionCandidate> {
-        val merged = linkedSetOf<SuggestionCandidate>()
-        singlish.forEach { merged.add(it) }
-        english.forEach { merged.add(it) }
-        return merged.take(12).toList()
     }
 
     private fun pickEnglishSuggestion(candidate: SuggestionCandidate, partialWord: String) {
@@ -1108,6 +1054,7 @@ class KeyboardService : InputMethodService() {
             val text = raw.trim()
             if (text.isBlank()) continue
             if (sinhalaScript && !containsSinhalaScript(text)) continue
+            if (!sinhalaScript && !EnglishSuggestionRanker.isEnglishOnly(text)) continue
             val commit = formatCloudSuggestion(text, prefixHint)
             val key = if (sinhalaScript) commit else commit.lowercase()
             if (!seen.add(key)) continue
@@ -1121,7 +1068,30 @@ class KeyboardService : InputMethodService() {
             )
             if (merged.size >= 8) break
         }
-        return merged
+
+        if (sinhalaScript) {
+            val filtered = merged.filter { containsSinhalaScript(it.commitText) }
+            val personalCounts = personalHistory.getCounts(
+                filtered.map { it.commitText },
+                PersonalHistoryDatabase.MODE_SINHALA,
+            )
+            return filtered.sortedWith(
+                compareByDescending<SuggestionCandidate> { personalCounts[it.commitText] ?: 0 }
+                    .thenBy { !it.isCloud }
+                    .thenBy { it.commitText.length },
+            )
+        }
+
+        val personalCounts = personalHistory.getCounts(
+            merged.map { it.commitText },
+            PersonalHistoryDatabase.MODE_ENGLISH,
+        )
+        return EnglishSuggestionRanker.rank(
+            prefix = prefixHint.orEmpty(),
+            candidates = merged,
+            personalCounts = personalCounts,
+            limit = 8,
+        )
     }
 
     private fun containsSinhalaScript(text: String): Boolean =

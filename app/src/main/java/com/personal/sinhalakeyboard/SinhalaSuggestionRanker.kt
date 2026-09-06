@@ -1,61 +1,50 @@
 package com.personal.sinhalakeyboard
 
 /**
- * Scores and orders Sinhala suggestion chips using corpus frequency as the primary signal.
+ * Scores and orders Sinhala suggestion chips:
+ * score = personal_count * 10_000 + corpus_frequency
  */
 object SinhalaSuggestionRanker {
 
-    /** Personal history outranks corpus, but corpus beats unverified converter guesses. */
-    private const val PERSONAL_BASE = 20_000_000
-
     fun rank(
         typedRomanLength: Int,
-        personal: List<SuggestionCandidate>,
         corpusFrequencies: Map<String, Int>,
+        personalCounts: Map<String, Int>,
         homophoneReadings: Collection<String>,
         limit: Int,
     ): List<String> {
         if (limit <= 0) return emptyList()
 
         val scores = HashMap<String, Int>()
+        val candidateWords = LinkedHashSet<String>()
+        candidateWords.addAll(corpusFrequencies.keys)
+        candidateWords.addAll(personalCounts.keys)
+        candidateWords.addAll(homophoneReadings)
 
-        personal.forEachIndexed { index, candidate ->
-            val word = candidate.commitText
-            if (word.isBlank() || word.contains(' ')) return@forEachIndexed
-            val boost = PERSONAL_BASE + (personal.size - index) * 1_000
-            scores[word] = maxOf(scores[word] ?: 0, boost)
-        }
-
-        for ((word, freq) in corpusFrequencies) {
-            if (freq <= 0) continue
+        for (word in candidateWords) {
+            if (word.isBlank() || word.contains(' ')) continue
+            if (!containsSinhalaScript(word)) continue
             if (!SinhalaSuggestionRules.isReasonableSinhalaSuggestion(
                     word,
                     typedRomanLength,
-                    fromCorpus = true,
+                    fromCorpus = word in corpusFrequencies,
                 )
             ) {
                 continue
             }
-            scores[word] = maxOf(scores[word] ?: 0, freq)
-        }
-
-        for (reading in homophoneReadings) {
-            if (reading.isBlank() || reading.contains(' ')) continue
-            if (!SinhalaSuggestionRules.isReasonableSinhalaSuggestion(reading, typedRomanLength)) continue
-            if (reading !in scores) {
-                scores[reading] = corpusFrequencies[reading] ?: 0
+            val personal = personalCounts[word] ?: 0
+            val corpus = corpusFrequencies[word] ?: 0
+            val score = PersonalHistoryDatabase.PERSONAL_WEIGHT * personal + corpus
+            if (score > 0 || homophoneReadings.contains(word)) {
+                scores[word] = score
             }
         }
 
-        val hasCorpusHits = scores.values.any { it in 1 until PERSONAL_BASE }
+        val hasCorpusOrPersonal = scores.values.any { it > 0 }
 
         return scores.entries
             .asSequence()
-            .filter { (word, score) ->
-                score >= PERSONAL_BASE ||
-                    score > 0 ||
-                    (!hasCorpusHits && homophoneReadings.contains(word))
-            }
+            .filter { (_, score) -> score > 0 || !hasCorpusOrPersonal }
             .sortedWith(
                 compareByDescending<Map.Entry<String, Int>> { it.value }
                     .thenBy { lengthDistance(it.key.length, typedRomanLength) }
@@ -66,6 +55,9 @@ object SinhalaSuggestionRanker {
             .map { it.key }
             .toList()
     }
+
+    private fun containsSinhalaScript(text: String): Boolean =
+        text.any { it.code in 0x0D80..0x0DFF }
 
     private fun lengthDistance(sinhalaLength: Int, typedRomanLength: Int): Int {
         val expected = (typedRomanLength * 1.15).toInt().coerceIn(1, 48)

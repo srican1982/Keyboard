@@ -3,11 +3,12 @@ package com.personal.sinhalakeyboard
 import android.content.Context
 
 /**
- * Singlish IME engine: Helakuru-style phonetic conversion (layer 1–2) plus
- * dictionary predictions for lazy/alternate spellings (layer 3).
+ * Singlish IME engine: phonetic conversion plus frequency-ranked Sinhala suggestions.
+ * Sinhala mode only — English mode must use [EnglishSuggestions].
  */
 class SinglishEngine(
     context: Context,
+    private val personalHistory: PersonalHistoryDatabase? = null,
     private val typingMemory: TypingMemory? = null,
 ) {
 
@@ -55,18 +56,19 @@ class SinglishEngine(
 
     fun transliterateLive(input: String): String = SinglishConverter.convert(input.trim())
 
-    fun suggestions(prefix: String, limit: Int = 12): List<SuggestionCandidate> {
+    /** Sinhala-mode chips only — Sinhala Unicode script, ranked by personal history + corpus. */
+    fun sinhalaSuggestions(prefix: String, limit: Int = 12): List<SuggestionCandidate> {
         val p = prefix.trim()
         if (p.isEmpty()) return emptyList()
 
         val lower = p.lowercase()
-        val personal = typingMemory?.sinhalaSuggestions(p, limit = 6).orEmpty()
         val romanVariants = romanSearchVariants(p)
         val homophoneReadings = linkedSetOf<String>()
         val sinhalaPrefixes = linkedSetOf<String>()
 
         for (roman in romanVariants) {
             for (reading in AlternateSinhalaReadings.forRoman(roman)) {
+                if (!containsSinhalaScript(reading)) continue
                 homophoneReadings.add(reading)
                 collectSinhalaPrefixes(reading, sinhalaPrefixes)
             }
@@ -74,47 +76,42 @@ class SinglishEngine(
 
         val corpusFrequencies = LinkedHashMap<String, Int>()
         for (entry in corpusDb.queryMergedByPrefixes(sinhalaPrefixes, limitPerPrefix = 24, totalLimit = 96)) {
+            if (!containsSinhalaScript(entry.word)) continue
             corpusFrequencies[entry.word] = maxOf(corpusFrequencies[entry.word] ?: 0, entry.frequency)
         }
         for ((word, freq) in corpusDb.lookupFrequencies(homophoneReadings)) {
+            if (!containsSinhalaScript(word)) continue
             corpusFrequencies[word] = maxOf(corpusFrequencies[word] ?: 0, freq)
         }
         addDictionaryCorpusMatches(lower, corpusFrequencies)
 
+        val candidateWords = LinkedHashSet<String>()
+        candidateWords.addAll(corpusFrequencies.keys)
+        candidateWords.addAll(homophoneReadings)
+
+        typingMemory?.sinhalaSuggestions(p, limit = 6)?.forEach { candidate ->
+            if (containsSinhalaScript(candidate.commitText)) {
+                candidateWords.add(candidate.commitText)
+            }
+        }
+
+        val personalCounts = personalHistory?.getCounts(
+            candidateWords,
+            PersonalHistoryDatabase.MODE_SINHALA,
+        ).orEmpty()
+
         val ranked = SinhalaSuggestionRanker.rank(
             typedRomanLength = p.length,
-            personal = personal,
             corpusFrequencies = corpusFrequencies,
-            homophoneReadings = homophoneReadings,
+            personalCounts = personalCounts,
+            homophoneReadings = homophoneReadings.filter { containsSinhalaScript(it) },
             limit = limit,
         )
 
-        val results = LinkedHashSet<SuggestionCandidate>()
-        for (word in ranked) {
-            results.add(SuggestionCandidate(word, word))
+        return ranked.map { word ->
+            val personal = (personalCounts[word] ?: 0) > 0
+            SuggestionCandidate(word, word, isPersonal = personal)
         }
-
-        if (results.size < limit) {
-            addRomanDictionaryPrefixes(lower, results, limit)
-        }
-
-        if (results.size < limit) {
-            val roman = p.replaceFirstChar { it.uppercaseChar() }
-            results.add(SuggestionCandidate(roman, p, isRoman = true))
-        }
-
-        return results.take(limit).toList()
-    }
-
-    /** Instant roman-word chips for English/Singlish typing — no AI delay. */
-    fun romanPrefixSuggestions(prefix: String, limit: Int = 10): List<SuggestionCandidate> {
-        val p = prefix.trim()
-        if (p.isEmpty()) return emptyList()
-        val lower = p.lowercase()
-        val results = LinkedHashSet<SuggestionCandidate>()
-        typingMemory?.sinhalaSuggestions(p, limit = 6)?.forEach { results.add(it) }
-        addRomanDictionaryPrefixes(lower, results, limit)
-        return results.take(limit).toList()
     }
 
     private fun romanSearchVariants(roman: String): Set<String> {
@@ -130,19 +127,15 @@ class SinglishEngine(
     private fun collectSinhalaPrefixes(reading: String, out: MutableSet<String>) {
         if (reading.isEmpty()) return
         out.add(reading)
-        if (reading.length >= 3) {
-            out.add(reading.dropLast(1))
-        }
-        if (reading.length >= 4) {
-            out.add(reading.dropLast(2))
-        }
+        if (reading.length >= 3) out.add(reading.dropLast(1))
+        if (reading.length >= 4) out.add(reading.dropLast(2))
     }
 
-    /** Boost exact manual-dict targets using their local weight when corpus misses them. */
     private fun addDictionaryCorpusMatches(lower: String, corpusFrequencies: MutableMap<String, Int>) {
         dictionary.entries
             .filter { it.key.startsWith(lower) || fuzzyMatch(it.key, lower) }
             .forEach { (romanKey, sinhala) ->
+                if (!containsSinhalaScript(sinhala)) return@forEach
                 val weight = frequency[romanKey] ?: 1
                 corpusFrequencies[sinhala] = maxOf(
                     corpusFrequencies[sinhala] ?: 0,
@@ -151,25 +144,6 @@ class SinglishEngine(
             }
     }
 
-    private fun addRomanDictionaryPrefixes(
-        lower: String,
-        results: LinkedHashSet<SuggestionCandidate>,
-        limit: Int,
-    ) {
-        dictionary.entries
-            .filter { it.key.startsWith(lower) && it.key.length > lower.length }
-            .sortedWith(
-                compareByDescending<Map.Entry<String, String>> { frequency[it.key] ?: 0 }
-                    .thenBy { it.key.length }
-                    .thenBy { it.key },
-            )
-            .forEach { (romanKey, _) ->
-                results.add(SuggestionCandidate(romanKey, romanKey, isRoman = true))
-                if (results.size >= limit) return
-            }
-    }
-
-    /** Lazy typing: "bng" matches "banga" / "bankuwa" style keys in dictionary. */
     private fun fuzzyMatch(dictKey: String, typed: String): Boolean {
         if (typed.length < 3 || dictKey.length < typed.length) return false
         var ti = 0
@@ -179,4 +153,7 @@ class SinglishEngine(
         }
         return false
     }
+
+    private fun containsSinhalaScript(text: String): Boolean =
+        text.any { it.code in 0x0D80..0x0DFF }
 }

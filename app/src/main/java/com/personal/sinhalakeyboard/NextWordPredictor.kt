@@ -2,10 +2,11 @@ package com.personal.sinhalakeyboard
 
 import android.content.Context
 
-/** Local bigram next-word predictions (offline). */
+/** Local bigram next-word predictions (offline), ranked with personal history. */
 class NextWordPredictor(
     context: Context,
     private val typingMemory: TypingMemory? = null,
+    private val personalHistory: PersonalHistoryDatabase? = null,
 ) {
 
     private val englishProfessional: Map<String, List<String>>
@@ -36,6 +37,8 @@ class NextWordPredictor(
         val seen = personal.map { it.commitText.lowercase() }.toMutableSet()
         val merged = personal.toMutableList()
         for (word in words) {
+            if (sinhala && !containsSinhalaScript(word)) continue
+            if (!sinhala && !EnglishSuggestionRanker.isEnglishOnly(word)) continue
             if (seen.add(word.lowercase())) {
                 merged.add(
                     SuggestionCandidate(
@@ -45,10 +48,28 @@ class NextWordPredictor(
                     ),
                 )
             }
-            if (merged.size >= limit) break
+            if (merged.size >= limit * 2) break
         }
-        return merged.take(limit)
+
+        val mode = if (sinhala) PersonalHistoryDatabase.MODE_SINHALA else PersonalHistoryDatabase.MODE_ENGLISH
+        val personalCounts = personalHistory?.getCounts(merged.map { it.commitText }, mode).orEmpty()
+
+        return if (sinhala) {
+            merged
+                .filter { containsSinhalaScript(it.commitText) }
+                .sortedWith(
+                    compareByDescending<SuggestionCandidate> {
+                        personalCounts[it.commitText] ?: 0
+                    }.thenBy { it.commitText },
+                )
+                .take(limit)
+        } else {
+            EnglishSuggestionRanker.rank("", merged, personalCounts, limit)
+        }
     }
+
+    private fun containsSinhalaScript(text: String): Boolean =
+        text.any { it.code in 0x0D80..0x0DFF }
 
     private fun loadBigrams(context: Context, assetName: String): Map<String, List<String>> {
         return try {

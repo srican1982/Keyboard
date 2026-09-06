@@ -9,12 +9,11 @@ import android.view.textservice.TextServicesManager
 import java.util.Locale
 
 /**
- * English word suggestions from the device spell checker and personal dictionary —
- * no hardcoded word list.
+ * English-mode word suggestions — device spell checker + personal SQLite history only.
  */
 class EnglishSuggestions(
     context: Context,
-    private val typingMemory: TypingMemory? = null,
+    private val personalHistory: PersonalHistoryDatabase? = null,
 ) {
 
     private val appContext = context.applicationContext
@@ -68,6 +67,7 @@ class EnglishSuggestions(
                     results?.forEach { info ->
                         for (i in 0 until info.suggestionsCount) {
                             val word = info.getSuggestionAt(i) ?: continue
+                            if (!EnglishSuggestionRanker.isEnglishOnly(word)) continue
                             if (word.lowercase().startsWith(lower) && word.lowercase() != lower) {
                                 spellSuggestions.add(
                                     SuggestionCandidate(formatWord(word, pendingPrefix), word),
@@ -92,12 +92,35 @@ class EnglishSuggestions(
         val callback = pendingCallback ?: return
         pendingCallback = null
 
+        val personalRows = personalHistory?.queryEnglishPrefix(prefix, limit = 12).orEmpty()
+        val personalCandidates = personalRows.map { (word, _) ->
+            SuggestionCandidate(formatWord(word, prefix), word, isPersonal = true)
+        }
+
         val merged = linkedSetOf<SuggestionCandidate>()
-        typingMemory?.englishSuggestions(prefix, limit = 4)?.forEach { merged.add(it) }
-        merged.addAll(pendingUserWords)
+        merged.addAll(personalCandidates)
+        merged.addAll(pendingUserWords.filter { EnglishSuggestionRanker.isEnglishOnly(it.commitText) })
         merged.addAll(spellSuggestions)
 
-        callback(merged.take(8).toList())
+        val personalCounts = personalHistory?.getCounts(
+            merged.map { it.commitText },
+            PersonalHistoryDatabase.MODE_ENGLISH,
+        ).orEmpty()
+
+        for ((word, count) in personalCounts) {
+            if (count > 0 && merged.none { it.commitText.equals(word, ignoreCase = true) }) {
+                merged.add(SuggestionCandidate(formatWord(word, prefix), word, isPersonal = true))
+            }
+        }
+
+        callback(
+            EnglishSuggestionRanker.rank(
+                prefix = prefix,
+                candidates = merged.toList(),
+                personalCounts = personalCounts,
+                limit = 8,
+            ),
+        )
     }
 
     private fun queryUserDictionary(prefix: String): List<SuggestionCandidate> {
@@ -114,6 +137,7 @@ class EnglishSuggestions(
                 val wordIdx = cursor.getColumnIndex(UserDictionary.Words.WORD)
                 while (cursor.moveToNext() && results.size < 8) {
                     val word = cursor.getString(wordIdx) ?: continue
+                    if (!EnglishSuggestionRanker.isEnglishOnly(word)) continue
                     if (word.lowercase() != lower) {
                         results.add(SuggestionCandidate(formatWord(word, prefix), word))
                     }

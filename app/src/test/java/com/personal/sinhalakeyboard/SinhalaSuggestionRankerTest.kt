@@ -10,40 +10,45 @@ class SinhalaSuggestionRankerTest {
     fun rank_prefersHigherCorpusFrequency() {
         val ranked = SinhalaSuggestionRanker.rank(
             typedRomanLength = 6,
-            personal = emptyList(),
             corpusFrequencies = mapOf(
-                "low" to 120,
-                "high" to 98_450,
-                "mid" to 4_500,
+                "\u0D8A\u0DA7\u0DD2\u0DBA\u0DDA" to 120,
+                "\u0D8A\u0D87\u0DA7\u0DD2\u0DBA\u0DDA" to 98_450,
+                "\u0D8A\u0DA7\u0DD2" to 4_500,
             ),
-            homophoneReadings = listOf("low", "high", "mid"),
+            personalCounts = emptyMap(),
+            homophoneReadings = listOf(
+                "\u0D8A\u0DA7\u0DD2\u0DBA\u0DDA",
+                "\u0D8A\u0D87\u0DA7\u0DD2\u0DBA\u0DDA",
+                "\u0D8A\u0DA7\u0DD2",
+            ),
             limit = 3,
         )
-        assertEquals(listOf("high", "mid", "low"), ranked)
+        assertEquals("\u0D8A\u0D87\u0DA7\u0DD2\u0DBA\u0DDA", ranked.first())
     }
 
     @Test
     fun rank_personalHistoryOutranksCorpus() {
+        val word = "\u0D8A\u0D87\u0DA7\u0DD2\u0DBA\u0DDA"
         val ranked = SinhalaSuggestionRanker.rank(
             typedRomanLength = 4,
-            personal = listOf(SuggestionCandidate("mine", "mine")),
-            corpusFrequencies = mapOf("common" to 500_000),
-            homophoneReadings = listOf("common", "mine"),
+            corpusFrequencies = mapOf("\u0D8A\u0DA7\u0DD2\u0DBA\u0DDA" to 500_000),
+            personalCounts = mapOf(word to 3),
+            homophoneReadings = listOf("\u0D8A\u0DA7\u0DD2\u0DBA\u0DDA", word),
             limit = 2,
         )
-        assertEquals("mine", ranked.first())
+        assertEquals(word, ranked.first())
     }
 
     @Test
-    fun rank_dropsZeroFrequencyWhenCorpusHasHits() {
+    fun rank_dropsZeroScoreWhenCorpusHasHits() {
         val ranked = SinhalaSuggestionRanker.rank(
             typedRomanLength = 5,
-            personal = emptyList(),
-            corpusFrequencies = mapOf("real" to 2_000),
-            homophoneReadings = listOf("noise", "real"),
+            corpusFrequencies = mapOf("\u0D8A\u0DA7\u0DD2" to 2_000),
+            personalCounts = emptyMap(),
+            homophoneReadings = listOf("\u0D8A\u0DA7\u0DD2", "\u0D8A\u0D87"),
             limit = 5,
         )
-        assertTrue(ranked.contains("real"))
-        assertTrue(!ranked.contains("noise"))
+        assertTrue(ranked.contains("\u0D8A\u0DA7\u0DD2"))
+        assertTrue(!ranked.contains("\u0D8A\u0D87"))
     }
 }
