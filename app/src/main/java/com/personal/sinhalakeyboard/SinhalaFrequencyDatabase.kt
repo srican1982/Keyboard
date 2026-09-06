@@ -21,6 +21,65 @@ class SinhalaFrequencyDatabase(context: Context) {
         db = openReadOnly(context)
     }
 
+    fun lookupFrequency(word: String): Int {
+        if (word.isEmpty() || db == null) return 0
+        db.rawQuery(
+            "SELECT freq FROM words WHERE word = ? LIMIT 1",
+            arrayOf(word),
+        ).use { cursor ->
+            return if (cursor.moveToFirst()) cursor.getInt(0) else 0
+        }
+    }
+
+    fun lookupFrequencies(words: Collection<String>): Map<String, Int> {
+        if (words.isEmpty() || db == null) return emptyMap()
+        val unique = words.filter { it.isNotEmpty() }.distinct()
+        if (unique.isEmpty()) return emptyMap()
+
+        val out = HashMap<String, Int>(unique.size)
+        val chunkSize = 400
+        for (chunk in unique.chunked(chunkSize)) {
+            val placeholders = chunk.joinToString(",") { "?" }
+            db.rawQuery(
+                "SELECT word, freq FROM words WHERE word IN ($placeholders)",
+                chunk.toTypedArray(),
+            ).use { cursor ->
+                val wordIdx = cursor.getColumnIndex("word")
+                val freqIdx = cursor.getColumnIndex("freq")
+                while (cursor.moveToNext()) {
+                    out[cursor.getString(wordIdx)] = cursor.getInt(freqIdx)
+                }
+            }
+        }
+        return out
+    }
+
+    /** Merge prefix hits from many Sinhala stems; keep the highest frequency per word. */
+    fun queryMergedByPrefixes(
+        prefixes: Collection<String>,
+        limitPerPrefix: Int = 20,
+        totalLimit: Int = 64,
+    ): List<Entry> {
+        if (prefixes.isEmpty() || db == null) return emptyList()
+
+        val merged = LinkedHashMap<String, Int>()
+        for (prefix in prefixes) {
+            if (prefix.length < 2) continue
+            for (entry in queryByPrefix(prefix, limitPerPrefix)) {
+                val prev = merged[entry.word]
+                if (prev == null || entry.frequency > prev) {
+                    merged[entry.word] = entry.frequency
+                }
+                if (merged.size >= totalLimit * 2) break
+            }
+        }
+
+        return merged.entries
+            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key.length })
+            .take(totalLimit)
+            .map { Entry(it.key, it.value) }
+    }
+
     fun queryByPrefix(prefix: String, limit: Int = 12): List<Entry> {
         if (prefix.isEmpty() || db == null) return emptyList()
         val escaped = prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")

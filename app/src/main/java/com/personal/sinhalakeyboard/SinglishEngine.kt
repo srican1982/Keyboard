@@ -60,93 +60,50 @@ class SinglishEngine(
         if (p.isEmpty()) return emptyList()
 
         val lower = p.lowercase()
+        val personal = typingMemory?.sinhalaSuggestions(p, limit = 6).orEmpty()
+        val romanVariants = romanSearchVariants(p)
+        val homophoneReadings = linkedSetOf<String>()
+        val sinhalaPrefixes = linkedSetOf<String>()
+
+        for (roman in romanVariants) {
+            for (reading in AlternateSinhalaReadings.forRoman(roman)) {
+                homophoneReadings.add(reading)
+                collectSinhalaPrefixes(reading, sinhalaPrefixes)
+            }
+        }
+
+        val corpusFrequencies = LinkedHashMap<String, Int>()
+        for (entry in corpusDb.queryMergedByPrefixes(sinhalaPrefixes, limitPerPrefix = 24, totalLimit = 96)) {
+            corpusFrequencies[entry.word] = maxOf(corpusFrequencies[entry.word] ?: 0, entry.frequency)
+        }
+        for ((word, freq) in corpusDb.lookupFrequencies(homophoneReadings)) {
+            corpusFrequencies[word] = maxOf(corpusFrequencies[word] ?: 0, freq)
+        }
+        addDictionaryCorpusMatches(lower, corpusFrequencies)
+
+        val ranked = SinhalaSuggestionRanker.rank(
+            typedRomanLength = p.length,
+            personal = personal,
+            corpusFrequencies = corpusFrequencies,
+            homophoneReadings = homophoneReadings,
+            limit = limit,
+        )
+
         val results = LinkedHashSet<SuggestionCandidate>()
-        val seenSinhala = HashSet<String>()
-
-        fun addSinhala(sinhala: String, fromCorpus: Boolean = false) {
-            if (sinhala.contains(' ')) return
-            if (sinhala in seenSinhala) return
-            if (!SinhalaSuggestionRules.isReasonableSinhalaSuggestion(sinhala, p.length, fromCorpus)) return
-            seenSinhala.add(sinhala)
-            results.add(SuggestionCandidate(sinhala, sinhala))
+        for (word in ranked) {
+            results.add(SuggestionCandidate(word, word))
         }
 
-        // Layer 0: pillam homophones first — ko→කො/කෝ, handa→හඳ/හඬ/හැන්ද
-        val homophones = AlternateSinhalaReadings.forRoman(p)
-        for (reading in homophones) {
-            addSinhala(reading)
+        if (results.size < limit) {
+            addRomanDictionaryPrefixes(lower, results, limit)
         }
 
-        // Layer 1: words you typed before (personal history)
-        typingMemory?.sinhalaSuggestions(p, limit = 3)?.forEach { candidate ->
-            if (candidate.commitText !in seenSinhala) {
-                seenSinhala.add(candidate.commitText)
-                results.add(candidate)
-            }
+        if (results.size < limit) {
+            val roman = p.replaceFirstChar { it.uppercaseChar() }
+            results.add(SuggestionCandidate(roman, p, isRoman = true))
         }
-
-        // Layer 2: frequency corpus — never crowd out homophones above
-        val corpusBudget = minOf(4, (limit - results.size).coerceAtLeast(0))
-        if (corpusBudget > 0) {
-            addCorpusSuggestions(p, corpusBudget) { addSinhala(it, fromCorpus = true) }
-        }
-        if (results.size >= limit) return results.take(limit).toList()
-
-        // Layer 2: longer roman dictionary words (e.g. ko → koheda, kohomada)
-        addRomanDictionaryPrefixes(lower, results, limit)
-
-        // Layer 3: manual dictionary prefix + lazy spellings
-        dictionary.entries
-            .filter { it.key.startsWith(lower) || fuzzyMatch(it.key, lower) }
-            .sortedWith(
-                compareByDescending<Map.Entry<String, String>> { frequency[it.key] ?: 0 }
-                    .thenBy { it.key.length }
-                    .thenBy { it.key },
-            )
-            .forEach { (_, sinhala) ->
-                addSinhala(sinhala)
-                if (results.size >= limit) return results.take(limit).toList()
-            }
-        if (results.size >= limit) return results.take(limit).toList()
-
-        // Layer 5: keep-as-Singlish (capitalized preview)
-        val roman = p.replaceFirstChar { it.uppercaseChar() }
-        results.add(SuggestionCandidate(roman, p, isRoman = true))
 
         return results.take(limit).toList()
-    }
-
-    private fun addCorpusSuggestions(
-        roman: String,
-        limit: Int,
-        add: (String) -> Unit,
-    ) {
-        val prefixes = sinhalaPrefixCandidates(roman)
-        if (prefixes.isEmpty()) return
-
-        val merged = LinkedHashMap<String, Int>()
-        val perPrefix = (limit * 2).coerceAtMost(24)
-        for (prefix in prefixes) {
-            for (entry in corpusDb.queryByPrefix(prefix, perPrefix)) {
-                val prev = merged[entry.word]
-                if (prev == null || entry.frequency > prev) {
-                    merged[entry.word] = entry.frequency
-                }
-            }
-        }
-
-        merged.entries
-            .sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key.length })
-            .take(limit)
-            .forEach { (word, _) -> add(word) }
-    }
-
-    private fun sinhalaPrefixCandidates(roman: String): List<String> {
-        val candidates = linkedSetOf<String>()
-        for (reading in AlternateSinhalaReadings.forRoman(roman)) {
-            candidates.add(reading)
-        }
-        return candidates.toList()
     }
 
     /** Instant roman-word chips for English/Singlish typing — no AI delay. */
@@ -158,6 +115,40 @@ class SinglishEngine(
         typingMemory?.sinhalaSuggestions(p, limit = 6)?.forEach { results.add(it) }
         addRomanDictionaryPrefixes(lower, results, limit)
         return results.take(limit).toList()
+    }
+
+    private fun romanSearchVariants(roman: String): Set<String> {
+        val variants = linkedSetOf(roman)
+        val derived = SinglishAmbiguityVariants.liveVariants(roman).toList()
+        variants.addAll(derived)
+        for (spelling in derived) {
+            variants.addAll(SinglishAmbiguityVariants.liveVariants(spelling))
+        }
+        return variants
+    }
+
+    private fun collectSinhalaPrefixes(reading: String, out: MutableSet<String>) {
+        if (reading.isEmpty()) return
+        out.add(reading)
+        if (reading.length >= 3) {
+            out.add(reading.dropLast(1))
+        }
+        if (reading.length >= 4) {
+            out.add(reading.dropLast(2))
+        }
+    }
+
+    /** Boost exact manual-dict targets using their local weight when corpus misses them. */
+    private fun addDictionaryCorpusMatches(lower: String, corpusFrequencies: MutableMap<String, Int>) {
+        dictionary.entries
+            .filter { it.key.startsWith(lower) || fuzzyMatch(it.key, lower) }
+            .forEach { (romanKey, sinhala) ->
+                val weight = frequency[romanKey] ?: 1
+                corpusFrequencies[sinhala] = maxOf(
+                    corpusFrequencies[sinhala] ?: 0,
+                    corpusDb.lookupFrequency(sinhala).takeIf { it > 0 } ?: weight,
+                )
+            }
     }
 
     private fun addRomanDictionaryPrefixes(

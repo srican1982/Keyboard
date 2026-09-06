@@ -19,6 +19,7 @@ object SinglishAmbiguityVariants {
             variants.addAll(vowelLengthVariants(word))
             variants.addAll(internalSyllableVowelVariants(word))
             variants.addAll(vowelAeVariants(word))
+            variants.addAll(allInterconsonantalAeVariants(word))
             variants.addAll(firstVowelAeVariants(word))
             variants.addAll(consonantDentalsVariants(word))
             variants.addAll(sanyakaClusterVariants(word))
@@ -190,7 +191,39 @@ object SinglishAmbiguityVariants {
         return last !in "aeiou"
     }
 
-    /** First syllable æ: handa→haenda (හැන්ද-style). */
+    /** Every standalone a between consonants ↔ ae (not only the first syllable). */
+    private fun allInterconsonantalAeVariants(word: String): Set<String> {
+        val variants = linkedSetOf<String>()
+        val lower = word.lowercase()
+        val vowels = "aeiou"
+
+        for (i in word.indices) {
+            if (lower[i] != 'a') continue
+            if (lower.regionMatches(i, "aa", 0, 2) || lower.regionMatches(i, "ae", 0, 2)) continue
+            val prev = lower.getOrNull(i - 1)
+            val next = lower.getOrNull(i + 1)
+            if ((prev == null || prev !in vowels) && (next == null || next !in vowels)) {
+                variants.add(word.substring(0, i) + "ae" + word.substring(i + 1))
+            }
+        }
+
+        var i = 0
+        while (i < lower.length - 1) {
+            if (lower.regionMatches(i, "ae", 0, 2)) {
+                val prev = lower.getOrNull(i - 1)
+                val next = lower.getOrNull(i + 2)
+                if ((prev == null || prev !in vowels) && (next == null || next !in vowels)) {
+                    variants.add(word.substring(0, i) + "a" + word.substring(i + 2))
+                }
+                i += 2
+            } else {
+                i += 1
+            }
+        }
+        return variants
+    }
+
+    /** First syllable æ: handa→haenda (හැන්ද-style). Kept for explicit handa path. */
     private fun firstVowelAeVariants(word: String): Set<String> {
         val variants = linkedSetOf<String>()
         val match = Regex("(?<![aeiou])a(?![aeiou])").find(word) ?: return variants

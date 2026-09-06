@@ -28,6 +28,16 @@ class AlternateSinhalaReadingsTest {
     }
 
     @Test
+    fun patiyo_includesAeVowelReading() {
+        val variants = SinglishAmbiguityVariants.liveVariants("patiyo")
+        assertTrue(variants.contains("paetiyo"))
+        val readings = AlternateSinhalaReadings.forRoman("patiyo")
+        assertTrue(readings.size >= 2)
+        assertTrue(readings.contains(SinglishConverter.convert("patiyo")))
+        assertTrue(readings.contains(SinglishConverter.convert("paetiyo")))
+    }
+
+    @Test
     fun handa_includesAllTripleReadings() {
         val readings = AlternateSinhalaReadings.forRoman("handa")
         assertTrue(readings.contains(c("handa"))) // හඳ
