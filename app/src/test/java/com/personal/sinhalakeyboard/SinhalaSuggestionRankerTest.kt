@@ -32,7 +32,7 @@ class SinhalaSuggestionRankerTest {
         val ranked = SinhalaSuggestionRanker.rank(
             typedRomanLength = 4,
             corpusFrequencies = mapOf("\u0D8A\u0DA7\u0DD2\u0DBA\u0DDA" to 500_000),
-            personalCounts = mapOf(word to 3),
+            personalCounts = mapOf(word to 55),
             homophoneReadings = listOf("\u0D8A\u0DA7\u0DD2\u0DBA\u0DDA", word),
             limit = 2,
         )

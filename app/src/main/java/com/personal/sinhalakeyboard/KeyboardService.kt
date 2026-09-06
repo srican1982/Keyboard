@@ -913,10 +913,10 @@ class KeyboardService : InputMethodService() {
         englishLocalSuggestJob?.cancel()
         englishLocalSuggestJob = scope.launch {
             englishSuggestions.suggest(wordSnapshot) { englishItems ->
-                scope.launch {
-                    if (language != Language.ENGLISH) return@launch
-                    val callbackIc = currentInputConnection ?: return@launch
-                    if (getCurrentWord(callbackIc) != wordSnapshot) return@launch
+                scope.launch englishSuggestCallback@{
+                    if (language != Language.ENGLISH) return@englishSuggestCallback
+                    val callbackIc = currentInputConnection ?: return@englishSuggestCallback
+                    if (getCurrentWord(callbackIc) != wordSnapshot) return@englishSuggestCallback
                     renderEnglishSuggestions(wordSnapshot, englishItems)
                     fetchEnglishCloudWordCompletions(wordSnapshot, englishItems)
                 }
