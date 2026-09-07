@@ -5,15 +5,18 @@ import android.database.sqlite.SQLiteDatabase
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
+import java.util.LinkedHashMap
 import java.util.zip.GZIPInputStream
 
 /**
- * Frequency-ranked Sinhala words from the UCSC NLP verified list
- * (nlpcuom/Word-Frequency-List-for-Sinhala — ~280k words).
+ * Frequency-ranked Sinhala word database.
  *
- * Important:
- * Prefix relevance is preserved so results from a stronger/longer prefix
- * are preferred over results from a weaker/shorter prefix.
+ * Performance goals:
+ *
+ * - avoid repeating SQLite work for the same prefix
+ * - avoid repeating exact frequency lookups
+ * - keep hot results in RAM
+ * - preserve current public API so callers do not need to change
  */
 class SinhalaFrequencyDatabase(context: Context) {
 
@@ -26,25 +29,104 @@ class SinhalaFrequencyDatabase(context: Context) {
 
     private val db: SQLiteDatabase?
 
+    /**
+     * Exact word-frequency cache.
+     *
+     * key   = Sinhala word
+     * value = corpus frequency
+     *
+     * Includes zero-frequency misses too, so we don't keep querying
+     * SQLite for words that do not exist.
+     */
+    private val frequencyCache =
+        object : LinkedHashMap<String, Int>(
+            FREQUENCY_CACHE_SIZE,
+            0.75f,
+            true,
+        ) {
+
+            override fun removeEldestEntry(
+                eldest: MutableMap.MutableEntry<String, Int>?,
+            ): Boolean {
+                return size > FREQUENCY_CACHE_SIZE
+            }
+        }
+
+    /**
+     * Prefix result cache.
+     *
+     * key = prefix + "|" + limit
+     */
+    private val prefixCache =
+        object : LinkedHashMap<String, List<Entry>>(
+            PREFIX_CACHE_SIZE,
+            0.75f,
+            true,
+        ) {
+
+            override fun removeEldestEntry(
+                eldest: MutableMap.MutableEntry<String, List<Entry>>?,
+            ): Boolean {
+                return size > PREFIX_CACHE_SIZE
+            }
+        }
+
     init {
         db = openReadOnly(context)
     }
 
-    fun lookupFrequency(word: String): Int {
-        if (word.isEmpty() || db == null) return 0
+    /**
+     * Exact frequency lookup.
+     *
+     * This now checks RAM before SQLite.
+     */
+    @Synchronized
+    fun lookupFrequency(
+        word: String,
+    ): Int {
 
-        db.rawQuery(
-            "SELECT freq FROM words WHERE word = ? LIMIT 1",
-            arrayOf(word),
-        ).use { cursor ->
-            return if (cursor.moveToFirst()) {
-                cursor.getInt(0)
-            } else {
-                0
-            }
+        if (word.isEmpty() || db == null) {
+            return 0
         }
+
+        frequencyCache[word]?.let {
+            return it
+        }
+
+        val result =
+            db.rawQuery(
+                """
+                SELECT freq
+                FROM words
+                WHERE word = ?
+                LIMIT 1
+                """.trimIndent(),
+                arrayOf(word),
+            ).use { cursor ->
+
+                if (cursor.moveToFirst()) {
+                    cursor.getInt(0)
+                } else {
+                    0
+                }
+            }
+
+        frequencyCache[word] =
+            result
+
+        return result
     }
 
+    /**
+     * Batch exact-frequency lookup.
+     *
+     * Important:
+     *
+     * 1. Return cached values immediately.
+     * 2. Query SQLite only for missing words.
+     * 3. Cache both hits and misses.
+     */
+    @Synchronized
     fun lookupFrequencies(
         words: Collection<String>,
     ): Map<String, Int> {
@@ -53,22 +135,77 @@ class SinhalaFrequencyDatabase(context: Context) {
             return emptyMap()
         }
 
-        val unique = words
-            .filter { it.isNotEmpty() }
-            .distinct()
+        val unique =
+            words
+                .asSequence()
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
+                .toList()
 
         if (unique.isEmpty()) {
             return emptyMap()
         }
 
-        val out = HashMap<String, Int>(unique.size)
+        val out =
+            HashMap<String, Int>(
+                unique.size
+            )
 
-        val chunkSize = 400
+        val missing =
+            ArrayList<String>()
 
-        for (chunk in unique.chunked(chunkSize)) {
+        /*
+         * First use RAM.
+         */
+        for (word in unique) {
+
+            val cached =
+                frequencyCache[word]
+
+            if (cached != null) {
+
+                out[word] =
+                    cached
+
+            } else {
+
+                missing.add(word)
+            }
+        }
+
+        /*
+         * Everything was already cached.
+         */
+        if (missing.isEmpty()) {
+            return out
+        }
+
+        /*
+         * SQLite IN() limit safety.
+         */
+        val chunkSize =
+            400
+
+        for (chunk in missing.chunked(chunkSize)) {
 
             val placeholders =
-                chunk.joinToString(",") { "?" }
+                chunk.joinToString(",") {
+                    "?"
+                }
+
+            /*
+             * Mark every requested word as zero first.
+             *
+             * If SQLite finds a row, we'll overwrite it.
+             *
+             * This means misses are cached too.
+             */
+            for (word in chunk) {
+
+                out[word] =
+                    0
+            }
 
             db.rawQuery(
                 """
@@ -79,22 +216,28 @@ class SinhalaFrequencyDatabase(context: Context) {
                 chunk.toTypedArray(),
             ).use { cursor ->
 
-                val wordIdx =
-                    cursor.getColumnIndex("word")
-
-                val freqIdx =
-                    cursor.getColumnIndex("freq")
-
-                while (cursor.moveToNext()) {
+                while (
+                    cursor.moveToNext()
+                ) {
 
                     val word =
-                        cursor.getString(wordIdx)
+                        cursor.getString(0)
 
                     val freq =
-                        cursor.getInt(freqIdx)
+                        cursor.getInt(1)
 
-                    out[word] = freq
+                    out[word] =
+                        freq
                 }
+            }
+
+            /*
+             * Store hits AND misses.
+             */
+            for (word in chunk) {
+
+                frequencyCache[word] =
+                    out[word] ?: 0
             }
         }
 
@@ -102,15 +245,9 @@ class SinhalaFrequencyDatabase(context: Context) {
     }
 
     /**
-     * Merge prefix hits from multiple Sinhala prefixes.
+     * Merge multiple prefix queries.
      *
-     * Ranking priority:
-     *
-     * 1. Longer matched prefix
-     * 2. Higher frequency
-     * 3. Shorter final word length
-     *
-     * This is much better than globally sorting only by corpus frequency.
+     * Longer prefixes remain stronger than shorter relaxed prefixes.
      */
     fun queryMergedByPrefixes(
         prefixes: Collection<String>,
@@ -118,34 +255,35 @@ class SinhalaFrequencyDatabase(context: Context) {
         totalLimit: Int = 64,
     ): List<Entry> {
 
-        if (prefixes.isEmpty() || db == null) {
+        if (
+            prefixes.isEmpty() ||
+            db == null ||
+            totalLimit <= 0
+        ) {
             return emptyList()
         }
 
-        /*
-         * Normalize and prefer stronger/longer prefixes first.
-         */
-        val normalizedPrefixes = prefixes
-            .asSequence()
-            .map { it.trim() }
-            .filter { it.length >= 2 }
-            .distinct()
-            .sortedByDescending { it.length }
-            .toList()
+        val normalizedPrefixes =
+            prefixes
+                .asSequence()
+                .map {
+                    it.trim()
+                }
+                .filter {
+                    it.length >= 2
+                }
+                .distinct()
+                .sortedByDescending {
+                    it.length
+                }
+                .toList()
 
         if (normalizedPrefixes.isEmpty()) {
             return emptyList()
         }
 
-        /*
-         * Word -> best entry.
-         *
-         * If the same word appears for multiple prefixes,
-         * keep the entry with the LONGEST matched prefix.
-         *
-         * If prefix lengths tie, keep the higher frequency.
-         */
-        val merged = LinkedHashMap<String, Entry>()
+        val merged =
+            LinkedHashMap<String, Entry>()
 
         for (prefix in normalizedPrefixes) {
 
@@ -157,35 +295,44 @@ class SinhalaFrequencyDatabase(context: Context) {
 
             for (entry in results) {
 
-                val candidate = Entry(
-                    word = entry.word,
-                    frequency = entry.frequency,
-                    matchedPrefix = prefix,
-                    matchedPrefixLength = prefix.length,
-                )
+                val candidate =
+                    Entry(
+                        word = entry.word,
+                        frequency = entry.frequency,
+                        matchedPrefix = prefix,
+                        matchedPrefixLength = prefix.length,
+                    )
 
                 val previous =
                     merged[candidate.word]
 
                 if (
                     previous == null ||
-                    candidate.matchedPrefixLength > previous.matchedPrefixLength ||
+                    candidate.matchedPrefixLength >
+                    previous.matchedPrefixLength ||
                     (
-                        candidate.matchedPrefixLength == previous.matchedPrefixLength &&
-                        candidate.frequency > previous.frequency
-                    )
+                        candidate.matchedPrefixLength ==
+                            previous.matchedPrefixLength &&
+                        candidate.frequency >
+                            previous.frequency
+                        )
                 ) {
-                    merged[candidate.word] = candidate
+
+                    merged[candidate.word] =
+                        candidate
                 }
             }
 
             /*
-             * Avoid unbounded candidate growth.
+             * Safety guard.
              *
-             * We still collect more than totalLimit so ranking has room,
-             * but we don't let very broad prefixes flood memory.
+             * Don't keep exploring lots of weak prefixes once we already
+             * have a healthy result pool.
              */
-            if (merged.size >= totalLimit * 3) {
+            if (
+                merged.size >=
+                totalLimit * 2
+            ) {
                 break
             }
         }
@@ -210,56 +357,107 @@ class SinhalaFrequencyDatabase(context: Context) {
     }
 
     /**
-     * Query words that begin with the supplied Sinhala prefix.
-     *
-     * Within one exact prefix, frequency order is appropriate.
+     * Prefix query with RAM cache.
      */
+    @Synchronized
     fun queryByPrefix(
         prefix: String,
         limit: Int = 12,
     ): List<Entry> {
 
-        if (prefix.isEmpty() || db == null) {
+        if (
+            prefix.isEmpty() ||
+            db == null ||
+            limit <= 0
+        ) {
             return emptyList()
         }
 
-        val escaped =
-            prefix
-                .replace("\\", "\\\\")
-                .replace("%", "\\%")
-                .replace("_", "\\_")
+        val normalized =
+            prefix.trim()
 
-        db.rawQuery(
-            """
-            SELECT word, freq
-            FROM words
-            WHERE word LIKE ? ESCAPE '\'
-            ORDER BY freq DESC, LENGTH(word), word
-            LIMIT ?
-            """.trimIndent(),
-            arrayOf(
-                "$escaped%",
-                limit.toString(),
-            ),
-        ).use { cursor ->
+        if (normalized.isEmpty()) {
+            return emptyList()
+        }
 
-            val out =
-                ArrayList<Entry>(limit)
+        val cacheKey =
+            "$normalized|$limit"
 
-            while (cursor.moveToNext()) {
-
-                out.add(
-                    Entry(
-                        word = cursor.getString(0),
-                        frequency = cursor.getInt(1),
-                        matchedPrefix = prefix,
-                        matchedPrefixLength = prefix.length,
-                    )
-                )
+        prefixCache[cacheKey]
+            ?.let {
+                return it
             }
 
-            return out
-        }
+        val escaped =
+            normalized
+                .replace(
+                    "\\",
+                    "\\\\",
+                )
+                .replace(
+                    "%",
+                    "\\%",
+                )
+                .replace(
+                    "_",
+                    "\\_",
+                )
+
+        val result =
+            db.rawQuery(
+                """
+                SELECT word, freq
+                FROM words
+                WHERE word LIKE ? ESCAPE '\'
+                ORDER BY freq DESC, LENGTH(word), word
+                LIMIT ?
+                """.trimIndent(),
+                arrayOf(
+                    "$escaped%",
+                    limit.toString(),
+                ),
+            ).use { cursor ->
+
+                val out =
+                    ArrayList<Entry>(
+                        limit
+                    )
+
+                while (
+                    cursor.moveToNext()
+                ) {
+
+                    val word =
+                        cursor.getString(0)
+
+                    val freq =
+                        cursor.getInt(1)
+
+                    out.add(
+                        Entry(
+                            word = word,
+                            frequency = freq,
+                            matchedPrefix = normalized,
+                            matchedPrefixLength =
+                                normalized.length,
+                        )
+                    )
+
+                    /*
+                     * Since we already have the frequency here,
+                     * also warm the exact-frequency cache.
+                     */
+                    frequencyCache[word] =
+                        freq
+                }
+
+                out
+            }
+
+        prefixCache[cacheKey] =
+            result
+
+        return result
     }
 
     fun isReady(): Boolean {
@@ -271,14 +469,19 @@ class SinhalaFrequencyDatabase(context: Context) {
         val database =
             db ?: return null
 
-        database
+        return database
             .rawQuery(
-                "SELECT COUNT(*) FROM words",
+                """
+                SELECT COUNT(*)
+                FROM words
+                """.trimIndent(),
                 null,
             )
             .use { cursor ->
 
-                return if (cursor.moveToFirst()) {
+                if (
+                    cursor.moveToFirst()
+                ) {
                     cursor.getInt(0)
                 } else {
                     null
@@ -286,7 +489,17 @@ class SinhalaFrequencyDatabase(context: Context) {
             }
     }
 
+    @Synchronized
+    fun clearMemoryCaches() {
+
+        frequencyCache.clear()
+        prefixCache.clear()
+    }
+
     fun close() {
+
+        clearMemoryCaches()
+
         db?.close()
     }
 
@@ -305,13 +518,33 @@ class SinhalaFrequencyDatabase(context: Context) {
             "sinhala_freq.db"
 
         /**
-         * Opens and prepares the frequency dictionary.
+         * A few thousand exact word lookups is tiny in memory,
+         * but enough to make normal typing reuse very effective.
          */
+        private const val FREQUENCY_CACHE_SIZE =
+            4096
+
+        /**
+         * Prefixes repeat constantly while typing.
+         *
+         * Example:
+         *
+         * ma
+         * mag
+         * mage
+         *
+         * and the same words are often typed again later.
+         */
+        private const val PREFIX_CACHE_SIZE =
+            512
+
         fun ensureReady(
             context: Context,
         ): SinhalaFrequencyDatabase {
 
-            return SinhalaFrequencyDatabase(context)
+            return SinhalaFrequencyDatabase(
+                context
+            )
         }
 
         private fun openReadOnly(
@@ -321,9 +554,12 @@ class SinhalaFrequencyDatabase(context: Context) {
             return try {
 
                 val path =
-                    context.getDatabasePath(DB_NAME)
+                    context.getDatabasePath(
+                        DB_NAME
+                    )
 
                 if (!path.exists()) {
+
                     prepareDatabase(
                         context = context,
                         dest = path,
@@ -353,7 +589,8 @@ class SinhalaFrequencyDatabase(context: Context) {
             dest: File,
         ) {
 
-            dest.parentFile?.mkdirs()
+            dest.parentFile
+                ?.mkdirs()
 
             when {
 
@@ -382,6 +619,7 @@ class SinhalaFrequencyDatabase(context: Context) {
                 }
 
                 else -> {
+
                     error(
                         "No Sinhala dictionary asset found"
                     )
@@ -418,11 +656,14 @@ class SinhalaFrequencyDatabase(context: Context) {
                 .open(assetName)
                 .use { input ->
 
-                    FileOutputStream(dest)
-                        .use { output ->
+                    FileOutputStream(
+                        dest
+                    ).use { output ->
 
-                            input.copyTo(output)
-                        }
+                        input.copyTo(
+                            output
+                        )
+                    }
                 }
         }
 
@@ -433,14 +674,19 @@ class SinhalaFrequencyDatabase(context: Context) {
         ) {
 
             GZIPInputStream(
-                context.assets.open(assetName)
+                context.assets.open(
+                    assetName
+                )
             ).use { input ->
 
-                FileOutputStream(dest)
-                    .use { output ->
+                FileOutputStream(
+                    dest
+                ).use { output ->
 
-                        input.copyTo(output)
-                    }
+                    input.copyTo(
+                        output
+                    )
+                }
             }
         }
     }
