@@ -1046,18 +1046,64 @@ class KeyboardService : InputMethodService() {
         isNextWord: Boolean,
         sinhalaScript: Boolean = false,
     ): List<SuggestionCandidate> {
-        val seen = local.map {
-            if (sinhalaScript) it.commitText else it.commitText.lowercase()
-        }.toMutableSet()
+        /*
+         * Sinhala behavior:
+         * Preserve the local rank EXACTLY and append unique cloud results.
+         * Cloud must never reshuffle the carefully ranked local Sinhala list.
+         */
+        if (sinhalaScript) {
+            val result = mutableListOf<SuggestionCandidate>()
+            val seen = linkedSetOf<String>()
+
+            for (candidate in local) {
+                val word = candidate.commitText.trim()
+                if (word.isBlank()) continue
+                if (!containsSinhalaScript(word)) continue
+                if (!seen.add(word)) continue
+
+                result.add(candidate)
+                if (result.size >= 8) return result
+            }
+
+            for (raw in cloudItems) {
+                val text = raw.trim()
+                if (text.isBlank()) continue
+                if (!containsSinhalaScript(text)) continue
+
+                val commit = formatCloudSuggestion(text, prefixHint)
+                if (!seen.add(commit)) continue
+
+                result.add(
+                    SuggestionCandidate(
+                        display = truncateSuggestionDisplay(commit),
+                        commitText = commit,
+                        isNextWord = isNextWord,
+                        isCloud = true,
+                    ),
+                )
+
+                if (result.size >= 8) break
+            }
+
+            return result
+        }
+
+        /*
+         * English behavior stays the same: merge cloud items and then let the
+         * English ranker score the complete list.
+         */
+        val seen = local.map { it.commitText.lowercase() }.toMutableSet()
         val merged = local.toMutableList()
+
         for (raw in cloudItems) {
             val text = raw.trim()
             if (text.isBlank()) continue
-            if (sinhalaScript && !containsSinhalaScript(text)) continue
-            if (!sinhalaScript && !EnglishSuggestionRanker.isEnglishOnly(text)) continue
+            if (!EnglishSuggestionRanker.isEnglishOnly(text)) continue
+
             val commit = formatCloudSuggestion(text, prefixHint)
-            val key = if (sinhalaScript) commit else commit.lowercase()
+            val key = commit.lowercase()
             if (!seen.add(key)) continue
+
             merged.add(
                 SuggestionCandidate(
                     display = truncateSuggestionDisplay(commit),
@@ -1066,26 +1112,15 @@ class KeyboardService : InputMethodService() {
                     isCloud = true,
                 ),
             )
-            if (merged.size >= 8) break
-        }
 
-        if (sinhalaScript) {
-            val filtered = merged.filter { containsSinhalaScript(it.commitText) }
-            val personalCounts = personalHistory.getCounts(
-                filtered.map { it.commitText },
-                PersonalHistoryDatabase.MODE_SINHALA,
-            )
-            return filtered.sortedWith(
-                compareByDescending<SuggestionCandidate> { personalCounts[it.commitText] ?: 0 }
-                    .thenBy { !it.isCloud }
-                    .thenBy { it.commitText.length },
-            )
+            if (merged.size >= 8) break
         }
 
         val personalCounts = personalHistory.getCounts(
             merged.map { it.commitText },
             PersonalHistoryDatabase.MODE_ENGLISH,
         )
+
         return EnglishSuggestionRanker.rank(
             prefix = prefixHint.orEmpty(),
             candidates = merged,
