@@ -47,7 +47,7 @@ class CloudSuggestionService {
             "google/gemini-3-flash-preview"
 
         const val ENGLISH_SUGGESTION_MODEL =
-            "google/gemini-3-flash-preview"
+            "openai/gpt-5.6-luna"
     }
 
     /**
