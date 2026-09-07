@@ -43,8 +43,11 @@ class CloudSuggestionService {
      */
     private companion object {
 
-        const val SUGGESTION_MODEL =
+        const val SINHALA_SUGGESTION_MODEL =
             "google/gemini-3-flash-preview"
+
+        const val ENGLISH_SUGGESTION_MODEL =
+            "openai/gpt-5.6-luna"
     }
 
     /**
@@ -122,6 +125,7 @@ class CloudSuggestionService {
             userContent = contextText.takeLast(300),
             maxTokens = 70,
             limit = limit,
+            model = if (sinhala) SINHALA_SUGGESTION_MODEL else ENGLISH_SUGGESTION_MODEL,
         )
     }
 
@@ -274,6 +278,7 @@ class CloudSuggestionService {
             userContent = user,
             maxTokens = 65,
             limit = limit,
+            model = SINHALA_SUGGESTION_MODEL,
         )
     }
 
@@ -373,6 +378,7 @@ class CloudSuggestionService {
             userContent = user,
             maxTokens = 55,
             limit = limit,
+            model = ENGLISH_SUGGESTION_MODEL,
         )
     }
 
@@ -429,6 +435,7 @@ class CloudSuggestionService {
             userContent = contextText.takeLast(350),
             maxTokens = 90,
             limit = limit,
+            model = ENGLISH_SUGGESTION_MODEL,
         )
     }
 
@@ -586,6 +593,7 @@ class CloudSuggestionService {
             userContent = user,
             maxTokens = 70,
             limit = limit,
+            model = ENGLISH_SUGGESTION_MODEL,
         )
     }
 
@@ -600,6 +608,7 @@ class CloudSuggestionService {
         userContent: String,
         maxTokens: Int,
         limit: Int,
+        model: String,
     ): Result<List<String>> {
 
         return try {
@@ -609,7 +618,7 @@ class CloudSuggestionService {
 
                     put(
                         "model",
-                        SUGGESTION_MODEL,
+                        model,
                     )
 
                     put(
@@ -628,7 +637,7 @@ class CloudSuggestionService {
 
                     OpenRouterHelper.applyModelOptions(
                         this,
-                        SUGGESTION_MODEL,
+                        model,
                     )
 
                     put(
