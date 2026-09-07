@@ -908,8 +908,7 @@ class SinglishEngine(
         ) {
 
             val mid =
-                (low + high)
-                    ushr 1
+                (low + high).ushr(1)
 
             if (
                 list[mid] <
