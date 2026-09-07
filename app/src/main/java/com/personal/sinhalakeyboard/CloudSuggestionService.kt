@@ -503,8 +503,8 @@ class CloudSuggestionService {
                 }
 
         if (
-            context.length < 8 ||
-            words.size < 2
+            context.length < 5 ||
+            words.size < 1
         ) {
             return@withContext Result.success(
                 emptyList()

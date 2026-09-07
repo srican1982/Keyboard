@@ -40,4 +40,10 @@ class EnglishSuggestionRankerTest {
         assertTrue(EnglishSuggestionRanker.isEnglishOnly("hello"))
         assertTrue(!EnglishSuggestionRanker.isEnglishOnly("\u0D8A\u0DA7\u0DD2"))
     }
+
+    @Test
+    fun isEnglishCloudSuggestion_allowsPhrases() {
+        assertTrue(EnglishSuggestionRanker.isEnglishCloudSuggestion("tell you something"))
+        assertTrue(!EnglishSuggestionRanker.isEnglishCloudSuggestion("\u0D8A\u0DA7\u0DD2"))
+    }
 }
