@@ -1,469 +1,1668 @@
 package com.personal.sinhalakeyboard
 
 /**
- * Single-step Singlish spelling alternatives for the suggestion row while typing.
- * Covers vowel overload (a→අ/ආ/ඇ/ඈ), consonant+vowel stems (ka→ක/කා/කැ/කෑ),
- * dental pairs (d/dh), and pre-nasalized clusters (handa→හඳ/හන්ද/හැන්ද).
+ * High-value phonetic alternatives for live Singlish typing.
+ *
+ * DESIGN GOAL
+ * -----------
+ *
+ * This is NOT a dictionary and does NOT contain word-specific corrections.
+ *
+ * Instead it generates a small, prioritized set of Roman alternatives
+ * representing common Sinhala phonetic ambiguity.
+ *
+ * Examples:
+ *
+ * da
+ *   d  -> ද
+ *   D  -> ඩ
+ *
+ * than
+ *   than  -> තන්
+ *   thaen -> තැන්
+ *   thaN  -> තණ...
+ *   thax  -> තං...
+ *
+ * sankayaawa
+ *   n before k can also represent anusvara:
+ *   sank... -> saxk...
+ *
+ * "x" is intentionally used for anusvara because SinglishConverter
+ * already maps:
+ *
+ *     x -> ං
+ *
+ * IMPORTANT:
+ * liveVariants() is ordered.
+ *
+ * SinglishEngine only consumes a limited number of variants for
+ * performance, so HIGH-VALUE phonetic alternatives MUST be inserted
+ * before broad/weak spelling alternatives.
  */
 object SinglishAmbiguityVariants {
 
+    /**
+     * Generate one-step, prioritized alternatives.
+     *
+     * LinkedHashSet preserves insertion order.
+     */
     fun liveVariants(word: String): Set<String> {
-        if (word.isEmpty()) return emptySet()
+
+        val typed = word.trim()
+
+        if (typed.isEmpty()) {
+            return emptySet()
+        }
 
         val variants = linkedSetOf<String>()
-        if (word.length == 1 || isVowelOnlyWord(word)) {
-            variants.addAll(standaloneVowelVariants(word))
-        }
-        if (word.length >= 2) {
-            variants.addAll(consonantVowelStemVariants(word))
-            variants.addAll(vowelLengthVariants(word))
-            variants.addAll(internalSyllableVowelVariants(word))
-            variants.addAll(vowelAeVariants(word))
-            variants.addAll(allInterconsonantalAeVariants(word))
-            variants.addAll(firstVowelAeVariants(word))
-            variants.addAll(consonantDentalsVariants(word))
-            variants.addAll(sanyakaClusterVariants(word))
-            variants.addAll(anusvaraVariants(word))
-            variants.addAll(anusvaraLazyNgVariants(word))
-            variants.addAll(existingHomophoneVariants(word))
-            val derived = variants.toList()
-            for (spelling in derived) {
-                variants.addAll(existingHomophoneVariants(spelling))
-            }
-        }
-        variants.remove(word)
-        return variants.filter { SinhalaSuggestionRules.isReasonableSpellingVariant(word, it) }.toSet()
-    }
 
-    /** a↔aa↔ae↔aee — standalone අ / ආ / ඇ / ඈ. */
-    private fun standaloneVowelVariants(word: String): Set<String> {
-        val variants = linkedSetOf<String>()
-        when (word.lowercase()) {
-            "a" -> {
-                variants.add("aa")
-                variants.add("ae")
-                variants.add("aee")
-            }
-            "aa" -> {
-                variants.add("a")
-                variants.add("ae")
-                variants.add("aee")
-            }
-            "ae" -> {
-                variants.add("a")
-                variants.add("aa")
-                variants.add("aee")
-            }
-            "aee" -> {
-                variants.add("a")
-                variants.add("aa")
-                variants.add("ae")
-            }
-            "e" -> {
-                variants.add("ee")
-            }
-            "ee" -> {
-                variants.add("e")
-            }
-            "i" -> {
-                variants.add("ii")
-            }
-            "ii" -> {
-                variants.add("i")
-            }
-            "o" -> {
-                variants.add("oo")
-            }
-            "oo" -> {
-                variants.add("o")
-            }
-            "u" -> {
-                variants.add("uu")
-            }
-            "uu" -> {
-                variants.add("u")
-            }
+        /*
+         * ============================================================
+         * PRIORITY 1
+         * Sinhala consonant / nasal ambiguity
+         * ============================================================
+         *
+         * These are the most important because they can completely
+         * change which Sinhala dictionary branch is searched.
+         */
+
+        variants.addAll(
+            highPriorityConsonantVariants(typed)
+        )
+
+        variants.addAll(
+            highPriorityNasalVariants(typed)
+        )
+
+        /*
+         * ============================================================
+         * PRIORITY 2
+         * a / ae ambiguity
+         * ============================================================
+         *
+         * Very common in informal Singlish:
+         *
+         * pati...  <-> paeti...
+         * than     <-> thaen
+         */
+
+        variants.addAll(
+            highPriorityAeVariants(typed)
+        )
+
+        /*
+         * ============================================================
+         * PRIORITY 3
+         * Useful combinations
+         * ============================================================
+         *
+         * Combine ONE strong consonant/nasal change with ONE common
+         * a/ae change.
+         *
+         * This gives useful candidates such as:
+         *
+         * da
+         *   -> Dae
+         *
+         * than
+         *   -> thaN
+         *   -> thax
+         *   -> thaen
+         *
+         * without recursively exploding every possible spelling.
+         */
+
+        variants.addAll(
+            combinedHighPriorityVariants(
+                typed
+            )
+        )
+
+        /*
+         * ============================================================
+         * PRIORITY 4
+         * Sanyaka / pre-nasalized clusters
+         * ============================================================
+         */
+
+        variants.addAll(
+            sanyakaClusterVariants(typed)
+        )
+
+        /*
+         * ============================================================
+         * PRIORITY 5
+         * trailing vowel alternatives
+         * ============================================================
+         */
+
+        if (
+            typed.length == 1 ||
+            isVowelOnlyWord(typed)
+        ) {
+            variants.addAll(
+                standaloneVowelVariants(typed)
+            )
         }
+
+        if (typed.length >= 2) {
+
+            variants.addAll(
+                consonantVowelStemVariants(typed)
+            )
+
+            variants.addAll(
+                vowelLengthVariants(typed)
+            )
+        }
+
+        /*
+         * ============================================================
+         * PRIORITY 6
+         * Broader internal vowel possibilities
+         * ============================================================
+         */
+
+        if (typed.length >= 3) {
+
+            variants.addAll(
+                internalSyllableVowelVariants(
+                    typed
+                )
+            )
+
+            variants.addAll(
+                vowelAeVariants(typed)
+            )
+        }
+
+        /*
+         * ============================================================
+         * PRIORITY 7
+         * Less common Sinhala homophones
+         * ============================================================
+         */
+
+        variants.addAll(
+            secondaryHomophoneVariants(
+                typed
+            )
+        )
+
+        /*
+         * Never return the original spelling.
+         */
+        variants.remove(typed)
+
+        /*
+         * Prevent pathological alternatives.
+         */
         return variants
+            .asSequence()
+            .filter {
+                it.isNotBlank()
+            }
+            .filter {
+                SinhalaSuggestionRules
+                    .isReasonableSpellingVariant(
+                        typed,
+                        it,
+                    )
+            }
+            .take(MAX_GENERATED_VARIANTS)
+            .toCollection(
+                linkedSetOf()
+            )
     }
 
     /**
-     * Consonant + trailing a cluster: ka→k/kaa/kae/kaee (ක / කා / කැ / කෑ).
-     * Applies to the last syllable's vowel in the typed prefix.
+     * ================================================================
+     * HIGH PRIORITY CONSONANTS
+     * ================================================================
+     *
+     * Uses the Roman symbols already understood by SinglishConverter.
+     *
+     * d -> ද
+     * D -> ඩ
+     *
+     * th -> ත
+     * t  -> ට
+     *
+     * n -> න
+     * N -> ණ
+     *
+     * l -> ල
+     * L -> ළ
      */
-    private fun consonantVowelStemVariants(word: String): Set<String> {
-        val variants = linkedSetOf<String>()
-        val lower = word.lowercase()
+    private fun highPriorityConsonantVariants(
+        word: String,
+    ): Set<String> {
 
-        when {
-            lower.endsWith("aee") && lower.length > 3 -> {
-                val stem = word.dropLast(3)
-                if (hasConsonantStem(stem)) {
-                    variants.add(stem + "a")
-                    variants.add(stem + "aa")
-                    variants.add(stem + "ae")
-                }
-            }
-            lower.endsWith("ae") && !lower.endsWith("aee") && lower.length > 2 -> {
-                val stem = word.dropLast(2)
-                if (hasConsonantStem(stem)) {
-                    variants.add(stem + "a")
-                    variants.add(stem + "aa")
-                    variants.add(stem + "aee")
-                }
-            }
-            lower.endsWith("aa") && lower.length > 2 -> {
-                val stem = word.dropLast(2)
-                if (hasConsonantStem(stem)) {
-                    variants.add(stem + "a")
-                    variants.add(stem + "ae")
-                    variants.add(stem + "aee")
-                }
-            }
-            lower.endsWith("a") && !lower.endsWith("aa") && !lower.endsWith("ae") && lower.length > 1 -> {
-                val stem = word.dropLast(1)
-                if (hasConsonantStem(stem)) {
-                    variants.add(stem)
-                    variants.add(stem + "aa")
-                    variants.add(stem + "ae")
-                    variants.add(stem + "aee")
-                }
-            }
-            lower.endsWith("oo") && lower.length > 2 -> {
-                val stem = word.dropLast(2)
-                if (hasConsonantStem(stem)) {
-                    variants.add(stem + "o")
-                }
-            }
-            lower.endsWith("o") && !lower.endsWith("oo") && lower.length > 1 -> {
-                val stem = word.dropLast(1)
-                if (hasConsonantStem(stem)) {
-                    variants.add(stem)
-                    variants.add(stem + "oo")
-                }
-            }
-            lower.endsWith("ee") && lower.length > 2 -> {
-                val stem = word.dropLast(2)
-                if (hasConsonantStem(stem)) {
-                    variants.add(stem + "e")
-                }
-            }
-            lower.endsWith("e") && !lower.endsWith("ee") && !lower.endsWith("ae") && lower.length > 1 -> {
-                val stem = word.dropLast(1)
-                if (hasConsonantStem(stem)) {
-                    variants.add(stem)
-                    variants.add(stem + "ee")
-                }
-            }
-            lower.endsWith("ii") && lower.length > 2 -> {
-                val stem = word.dropLast(2)
-                if (hasConsonantStem(stem)) {
-                    variants.add(stem + "i")
-                }
-            }
-            lower.endsWith("i") && !lower.endsWith("ii") && lower.length > 1 -> {
-                val stem = word.dropLast(1)
-                if (hasConsonantStem(stem)) {
-                    variants.add(stem)
-                    variants.add(stem + "ii")
-                }
-            }
-            lower.endsWith("uu") && lower.length > 2 -> {
-                val stem = word.dropLast(2)
-                if (hasConsonantStem(stem)) {
-                    variants.add(stem + "u")
-                }
-            }
-            lower.endsWith("u") && !lower.endsWith("uu") && lower.length > 1 -> {
-                val stem = word.dropLast(1)
-                if (hasConsonantStem(stem)) {
-                    variants.add(stem)
-                    variants.add(stem + "uu")
-                }
-            }
-        }
-        return variants
-    }
+        val out =
+            linkedSetOf<String>()
 
-    private fun hasConsonantStem(stem: String): Boolean {
-        if (stem.isEmpty()) return false
-        val last = stem.last().lowercaseChar()
-        return last !in "aeiou"
-    }
+        /*
+         * ------------------------------------------------------------
+         * ද / ඩ
+         * ------------------------------------------------------------
+         *
+         * This is intentionally before d <-> dh.
+         *
+         * "da" should immediately give both:
+         *
+         * da
+         * Da
+         */
 
-    /** Every standalone a between consonants ↔ ae (not only the first syllable). */
-    private fun allInterconsonantalAeVariants(word: String): Set<String> {
-        val variants = linkedSetOf<String>()
-        val lower = word.lowercase()
-        val vowels = "aeiou"
+        replaceEachSingleLetter(
+            word = word,
+            from = 'd',
+            to = 'D',
+            out = out,
+            skipIfPartOf = listOf(
+                "dh",
+                "nd",
+            ),
+        )
 
-        for (i in word.indices) {
-            if (lower[i] != 'a') continue
-            if (lower.regionMatches(i, "aa", 0, 2) || lower.regionMatches(i, "ae", 0, 2)) continue
-            val prev = lower.getOrNull(i - 1)
-            val next = lower.getOrNull(i + 1)
-            if ((prev == null || prev !in vowels) && (next == null || next !in vowels)) {
-                variants.add(word.substring(0, i) + "ae" + word.substring(i + 1))
-            }
-        }
+        replaceEachSingleLetter(
+            word = word,
+            from = 'D',
+            to = 'd',
+            out = out,
+        )
 
-        var i = 0
-        while (i < lower.length - 1) {
-            if (lower.regionMatches(i, "ae", 0, 2)) {
-                val prev = lower.getOrNull(i - 1)
-                val next = lower.getOrNull(i + 2)
-                if ((prev == null || prev !in vowels) && (next == null || next !in vowels)) {
-                    variants.add(word.substring(0, i) + "a" + word.substring(i + 2))
-                }
-                i += 2
-            } else {
-                i += 1
-            }
-        }
-        return variants
-    }
+        /*
+         * ------------------------------------------------------------
+         * ත / ට
+         * ------------------------------------------------------------
+         *
+         * Converter:
+         *
+         * th -> ත
+         * t  -> ට
+         */
 
-    /** First syllable æ: handa→haenda (හැන්ද-style). Kept for explicit handa path. */
-    private fun firstVowelAeVariants(word: String): Set<String> {
-        val variants = linkedSetOf<String>()
-        val match = Regex("(?<![aeiou])a(?![aeiou])").find(word) ?: return variants
-        variants.add(word.replaceRange(match.range, "ae"))
-        val aeMatch = Regex("(?<![aeiou])ae(?![aeiou])").find(word)
-        if (aeMatch != null) {
-            variants.add(word.replaceRange(aeMatch.range, "a"))
-        }
-        return variants
+        replaceEachDigraph(
+            word = word,
+            from = "th",
+            to = "t",
+            out = out,
+        )
+
+        replaceBareLetter(
+            word = word,
+            from = 't',
+            replacement = "th",
+            out = out,
+            blockedFollower = 'h',
+        )
+
+        /*
+         * ------------------------------------------------------------
+         * න / ණ
+         * ------------------------------------------------------------
+         */
+
+        replaceEachSingleLetter(
+            word = word,
+            from = 'n',
+            to = 'N',
+            out = out,
+            skipIfPartOf = listOf(
+                "ng",
+                "nd",
+            ),
+        )
+
+        replaceEachSingleLetter(
+            word = word,
+            from = 'N',
+            to = 'n',
+            out = out,
+        )
+
+        /*
+         * ------------------------------------------------------------
+         * ල / ළ
+         * ------------------------------------------------------------
+         */
+
+        replaceEachSingleLetter(
+            word = word,
+            from = 'l',
+            to = 'L',
+            out = out,
+        )
+
+        replaceEachSingleLetter(
+            word = word,
+            from = 'L',
+            to = 'l',
+            out = out,
+        )
+
+        return out
     }
 
     /**
-     * Pre-nasalized (ඳ/ඬ) vs split න+ද, and æ (ැ):
-     *   handa → හඳ (nda→ඳ), hanDa → හඬ (nDa→ඬ), haendha → හැන්ද (ndha + ae)
+     * ================================================================
+     * NASAL / ANUSVARA
+     * ================================================================
+     *
+     * x is the converter's explicit anusvara token:
+     *
+     * x -> ං
+     *
+     * This gives us direct Sinhala branches instead of hoping that
+     * "ng" happens to resolve correctly.
      */
-    private fun sanyakaClusterVariants(word: String): Set<String> {
-        val variants = linkedSetOf<String>()
-        val lower = word.lowercase()
+    private fun highPriorityNasalVariants(
+        word: String,
+    ): Set<String> {
 
-        if (lower.contains("nda")) {
-            // ඳ (sanyaka dha) is the default — keep typed form as-is.
-            // ඬ (sanyaka da): nda → nDa — e.g. handa → hanDa → හඬ
-            variants.add(word.replaceFirst("nda", "nDa", ignoreCase = true))
-            // න+ද (not pre-nasalized): nda → ndha — e.g. haendha → හැන්ද
-            val ndhaForm = word.replaceFirst("nda", "ndha", ignoreCase = true)
-            variants.add(ndhaForm)
-            for (aeForm in firstVowelAeVariants(ndhaForm)) {
-                variants.add(aeForm)
-            }
-            if (lower == "handa") {
-                variants.add("haendha")
-            }
-        }
-        return variants
-    }
+        val out =
+            linkedSetOf<String>()
 
-    private fun isVowelOnlyWord(word: String): Boolean =
-        word.all { it.lowercaseChar() in "aeiou" }
+        val lower =
+            word.lowercase()
 
-    /** o↔oo, e↔ee, i↔ii, u↔uu — e.g. ko→koo (කො/කෝ), kee→ke (කී/කෙ). */
-    private fun vowelLengthVariants(word: String): Set<String> {
-        val variants = linkedSetOf<String>()
-        toggleSuffix(word, "oo", "o", variants)
-        toggleSuffix(word, "o", "oo", variants) { !word.endsWith("oo") }
-        toggleSuffix(word, "ee", "e", variants)
-        toggleSuffix(word, "e", "ee", variants) { !word.endsWith("ee") && !word.endsWith("ae") }
-        toggleSuffix(word, "ii", "i", variants)
-        toggleSuffix(word, "i", "ii", variants) { !word.endsWith("ii") }
-        toggleSuffix(word, "uu", "u", variants)
-        toggleSuffix(word, "u", "uu", variants) { !word.endsWith("uu") }
-        return variants
-    }
+        /*
+         * ------------------------------------------------------------
+         * Word-final n -> x
+         * ------------------------------------------------------------
+         *
+         * than
+         *
+         * than -> thax
+         *
+         * allowing:
+         *
+         * තන් / තං
+         */
 
-    /**
-     * Mid-word pillam: ko→koo, na→naa (e.g. konara → කෝනර / කෝනාර / කෝණාර).
-     */
-    private fun internalSyllableVowelVariants(word: String): Set<String> {
-        val variants = linkedSetOf<String>()
-        val lower = word.lowercase()
-        val vowels = "aeiou"
+        if (
+            lower.endsWith("n") &&
+            !lower.endsWith("ng")
+        ) {
 
-        val lengthenedOoEe = linkedSetOf<String>()
-        for (i in word.indices) {
-            if (lower[i] == 'o' && !lower.regionMatches(i, "oo", 0, 2)) {
-                val next = lower.getOrNull(i + 1)
-                if (next != null && next !in vowels) {
-                    lengthenedOoEe.add(word.substring(0, i) + "oo" + word.substring(i + 1))
-                }
-            }
-            if (lower[i] == 'e' && !lower.regionMatches(i, "ee", 0, 2)) {
-                val next = lower.getOrNull(i + 1)
-                if (next != null && next !in vowels) {
-                    lengthenedOoEe.add(word.substring(0, i) + "ee" + word.substring(i + 1))
-                }
-            }
-        }
-        variants.addAll(lengthenedOoEe)
-        variants.addAll(lengthenConsonantSandwichVowels(word))
-        for (form in lengthenedOoEe) {
-            variants.addAll(lengthenConsonantSandwichVowels(form))
+            out.add(
+                word.dropLast(1) +
+                    "x"
+            )
         }
 
-        return variants
-    }
+        /*
+         * Existing explicit anusvara -> normal n alternative.
+         */
+        if (
+            lower.endsWith("x")
+        ) {
 
-    /** a/i/u between consonants → aa/ii/uu (e.g. koonara → koonaara). */
-    private fun lengthenConsonantSandwichVowels(word: String): Set<String> {
-        val variants = linkedSetOf<String>()
-        val lower = word.lowercase()
-        val vowels = "aeiou"
-        for (i in 1 until word.length - 1) {
-            val prev = lower[i - 1]
-            val ch = lower[i]
-            val next = lower[i + 1]
-            if (prev !in vowels && next !in vowels) {
-                when {
-                    ch == 'a' && !lower.regionMatches(i, "aa", 0, 2) ->
-                        variants.add(word.substring(0, i) + "aa" + word.substring(i + 1))
-                    ch == 'i' && !lower.regionMatches(i, "ii", 0, 2) ->
-                        variants.add(word.substring(0, i) + "ii" + word.substring(i + 1))
-                    ch == 'u' && !lower.regionMatches(i, "uu", 0, 2) ->
-                        variants.add(word.substring(0, i) + "uu" + word.substring(i + 1))
-                }
-            }
+            out.add(
+                word.dropLast(1) +
+                    "n"
+            )
         }
-        return variants
-    }
 
-    /** aa↔ae↔aee anywhere in the word. */
-    private fun vowelAeVariants(word: String): Set<String> {
-        val variants = linkedSetOf<String>()
-        replaceFirst(word, "aee", "ae", variants)
-        replaceFirst(word, "aee", "aa", variants)
-        replaceFirst(word, "AA", "aee", variants)
-        replaceFirst(word, "AA", "ae", variants)
-        replaceFirst(word, "ae", "aa", variants)
-        replaceFirst(word, "ae", "aee", variants)
-        replaceFirst(word, "A", "ae", variants) { word.endsWith("A") && !word.endsWith("AA") }
-        replaceFirst(word, "aa", "ae", variants)
-        replaceFirst(word, "aa", "aee", variants)
-        return variants
-    }
+        /*
+         * ------------------------------------------------------------
+         * n before consonant -> x
+         * ------------------------------------------------------------
+         *
+         * Very important for forms such as:
+         *
+         * sank...
+         *
+         * -> saxk...
+         *
+         * This allows the converter to produce:
+         *
+         * සංක්...
+         */
 
-    /** d↔dh, t↔th — e.g. da→dha (ඩ/ද), ta→tha (ට/ත). */
-    private fun consonantDentalsVariants(word: String): Set<String> {
-        val variants = linkedSetOf<String>()
         var i = 0
-        while (i < word.length) {
-            when {
-                word.regionMatches(i, "dh", 0, 2, ignoreCase = true) -> {
-                    variants.add(word.substring(0, i) + "d" + word.substring(i + 2))
-                    i += 2
-                }
-                word.regionMatches(i, "th", 0, 2, ignoreCase = true) -> {
-                    variants.add(word.substring(0, i) + "t" + word.substring(i + 2))
-                    i += 2
-                }
-                word[i] == 'd' && (i + 1 >= word.length || word[i + 1] != 'h') &&
-                    (i == 0 || word[i - 1] != 'n') -> {
-                    variants.add(word.substring(0, i) + "dh" + word.substring(i + 1))
-                    i += 1
-                }
-                word[i] == 't' && (i + 1 >= word.length || word[i + 1] != 'h') -> {
-                    variants.add(word.substring(0, i) + "th" + word.substring(i + 1))
-                    i += 1
-                }
-                else -> i += 1
-            }
-        }
-        return variants
-    }
 
-    /** Word-final n↔ng — e.g. tan→tang (ටන්/ටං). */
-    private fun anusvaraVariants(word: String): Set<String> {
-        val variants = linkedSetOf<String>()
-        if (word.endsWith("ng") && word.length > 2) {
-            variants.add(word.dropLast(2) + "n")
-        }
-        if (word.endsWith('n') && !word.endsWith("ng")) {
-            variants.add(word.dropLast(1) + "ng")
-        }
-        return variants
-    }
+        while (
+            i <
+            word.length - 1
+        ) {
 
-    /** Insert g after n before velars — sank↔sangk (bindu spelling). */
-    private fun anusvaraLazyNgVariants(word: String): Set<String> {
-        val variants = linkedSetOf<String>()
-        val lower = word.lowercase()
-        val triggers = listOf("k", "g", "c", "j", "t", "p", "b", "m", "s", "h")
-        var i = 0
-        while (i < word.length - 1) {
-            if (word[i].equals('n', ignoreCase = true)) {
-                val tail = lower.substring(i + 1)
-                if (!tail.startsWith("d") && !tail.startsWith("g") &&
-                    triggers.any { tail.startsWith(it) }
+            val current =
+                lower[i]
+
+            if (
+                current == 'n'
+            ) {
+
+                /*
+                 * Don't replace the n in explicit "ng".
+                 */
+                if (
+                    lower.getOrNull(
+                        i + 1
+                    ) == 'g'
                 ) {
-                    variants.add(word.substring(0, i + 1) + "g" + word.substring(i + 1))
+                    i++
+                    continue
+                }
+
+                val next =
+                    lower.getOrNull(
+                        i + 1
+                    )
+
+                if (
+                    next != null &&
+                    next !in ROMAN_VOWELS &&
+                    next in ANUSVARA_FOLLOWERS
+                ) {
+
+                    out.add(
+                        word.substring(
+                            0,
+                            i,
+                        ) +
+                            "x" +
+                            word.substring(
+                                i + 1
+                            )
+                    )
                 }
             }
+
             i++
         }
-        return variants
+
+        /*
+         * ------------------------------------------------------------
+         * ng <-> x
+         * ------------------------------------------------------------
+         */
+
+        var ngIndex =
+            lower.indexOf("ng")
+
+        while (
+            ngIndex >= 0
+        ) {
+
+            out.add(
+                word.substring(
+                    0,
+                    ngIndex,
+                ) +
+                    "x" +
+                    word.substring(
+                        ngIndex + 2
+                    )
+            )
+
+            ngIndex =
+                lower.indexOf(
+                    "ng",
+                    ngIndex + 2,
+                )
+        }
+
+        return out
     }
 
-    /** Case / mahaprana toggles (sh/Sh, n/N, kh/K, …). */
-    private fun existingHomophoneVariants(word: String): Set<String> {
-        val variants = linkedSetOf<String>()
-        val digraphPairs = listOf(
-            "kh" to "K", "K" to "kh",
-            "gh" to "G", "G" to "gh",
-            "ph" to "P", "P" to "ph",
-            "bh" to "B", "B" to "bh",
-            "ch" to "Ch", "Ch" to "ch",
-            "Sh" to "sh", "sh" to "Sh",
-            "th" to "T", "T" to "th",
-        )
-        for ((from, to) in digraphPairs) {
-            replaceFirst(word, from, to, variants)
-        }
+    /**
+     * ================================================================
+     * HIGH-PRIORITY a / ae
+     * ================================================================
+     *
+     * Informal Singlish very frequently uses "a" for both:
+     *
+     * අ-style
+     * ඇ-style
+     *
+     * We create changes one syllable at a time.
+     */
+    private fun highPriorityAeVariants(
+        word: String,
+    ): Set<String> {
 
-        var i = 0
-        while (i < word.length) {
-            when {
-                word.regionMatches(i, "sh", 0, 2, ignoreCase = true) -> i += 2
-                word[i] == 'n' && (i + 1 >= word.length || word[i + 1] != 'g') -> {
-                    variants.add(word.substring(0, i) + "N" + word.substring(i + 1))
-                    i += 1
-                }
-                word[i] == 'N' -> {
-                    variants.add(word.substring(0, i) + "n" + word.substring(i + 1))
-                    i += 1
-                }
-                word[i] == 'l' -> {
-                    variants.add(word.substring(0, i) + "L" + word.substring(i + 1))
-                    i += 1
-                }
-                word[i] == 'L' -> {
-                    variants.add(word.substring(0, i) + "l" + word.substring(i + 1))
-                    i += 1
-                }
-                word[i] == 'j' && (i + 1 >= word.length || word[i + 1] != 'h') -> {
-                    variants.add(word.substring(0, i) + "J" + word.substring(i + 1))
-                    i += 1
-                }
-                word[i] == 'J' && (i + 1 >= word.length || word[i + 1] != 'h') -> {
-                    variants.add(word.substring(0, i) + "j" + word.substring(i + 1))
-                    i += 1
-                }
-                word[i] == 's' && (i + 1 >= word.length || !word.regionMatches(i + 1, "h", 0, 1, true)) -> {
-                    variants.add(word.substring(0, i) + "S" + word.substring(i + 1))
-                    i += 1
-                }
-                word[i] == 'S' && (i + 1 >= word.length || !word.regionMatches(i + 1, "h", 0, 1, true)) -> {
-                    variants.add(word.substring(0, i) + "s" + word.substring(i + 1))
-                    i += 1
-                }
-                else -> i += 1
+        val out =
+            linkedSetOf<String>()
+
+        val lower =
+            word.lowercase()
+
+        /*
+         * a -> ae
+         *
+         * Only a standalone short 'a', not one already inside:
+         *
+         * aa
+         * ae
+         */
+
+        for (
+            i in
+            word.indices
+        ) {
+
+            if (
+                lower[i] != 'a'
+            ) {
+                continue
+            }
+
+            val previous =
+                lower.getOrNull(
+                    i - 1
+                )
+
+            val next =
+                lower.getOrNull(
+                    i + 1
+                )
+
+            /*
+             * Skip second/first character of aa/ae-like sequences.
+             */
+            if (
+                previous == 'a' ||
+                previous == 'e'
+            ) {
+                continue
+            }
+
+            if (
+                next == 'a' ||
+                next == 'e'
+            ) {
+                continue
+            }
+
+            /*
+             * Most useful when it belongs to a consonant syllable.
+             */
+            if (
+                previous != null &&
+                previous !in ROMAN_VOWELS
+            ) {
+
+                out.add(
+                    word.substring(
+                        0,
+                        i,
+                    ) +
+                        "ae" +
+                        word.substring(
+                            i + 1
+                        )
+                )
             }
         }
-        return variants
+
+        /*
+         * ae -> a
+         */
+
+        var index =
+            lower.indexOf("ae")
+
+        while (
+            index >= 0
+        ) {
+
+            out.add(
+                word.substring(
+                    0,
+                    index,
+                ) +
+                    "a" +
+                    word.substring(
+                        index + 2
+                    )
+            )
+
+            index =
+                lower.indexOf(
+                    "ae",
+                    index + 2,
+                )
+        }
+
+        return out
+    }
+
+    /**
+     * Combine only the BEST phonetic classes.
+     *
+     * This is deliberately shallow:
+     *
+     * original
+     *   -> one consonant/nasal change
+     *   -> optionally one a/ae change
+     *
+     * We do NOT recursively feed every resulting variant back through
+     * every rule.
+     */
+    private fun combinedHighPriorityVariants(
+        word: String,
+    ): Set<String> {
+
+        val out =
+            linkedSetOf<String>()
+
+        val strongBase =
+            linkedSetOf<String>()
+
+        strongBase.addAll(
+            highPriorityConsonantVariants(
+                word
+            )
+        )
+
+        strongBase.addAll(
+            highPriorityNasalVariants(
+                word
+            )
+        )
+
+        /*
+         * Only combine the first few strong alternatives.
+         *
+         * This keeps latency predictable.
+         */
+        for (
+            base in
+            strongBase.take(
+                MAX_COMBINATION_BASES
+            )
+        ) {
+
+            for (
+                aeVariant in
+                highPriorityAeVariants(
+                    base
+                ).take(
+                    MAX_AE_COMBINATIONS_PER_BASE
+                )
+            ) {
+
+                out.add(
+                    aeVariant
+                )
+            }
+        }
+
+        /*
+         * Also apply consonant/nasal ambiguity to the strongest
+         * a/ae variant.
+         *
+         * Example:
+         *
+         * than
+         * -> thaen
+         * -> thaeN / thaex
+         */
+
+        for (
+            aeBase in
+            highPriorityAeVariants(
+                word
+            ).take(
+                MAX_AE_BASES
+            )
+        ) {
+
+            highPriorityConsonantVariants(
+                aeBase
+            )
+                .take(
+                    MAX_SECONDARY_COMBINATIONS
+                )
+                .forEach {
+                    out.add(it)
+                }
+
+            highPriorityNasalVariants(
+                aeBase
+            )
+                .take(
+                    MAX_SECONDARY_COMBINATIONS
+                )
+                .forEach {
+                    out.add(it)
+                }
+        }
+
+        return out
+    }
+
+    /**
+     * ================================================================
+     * SANYAKA / PRE-NASALIZED CLUSTERS
+     * ================================================================
+     */
+    private fun sanyakaClusterVariants(
+        word: String,
+    ): Set<String> {
+
+        val out =
+            linkedSetOf<String>()
+
+        val lower =
+            word.lowercase()
+
+        /*
+         * nd is understood by SinglishConverter as SANYAKA_DHA.
+         *
+         * nD / Nd can represent SANYAKA_DA.
+         */
+
+        var index =
+            lower.indexOf("nd")
+
+        while (
+            index >= 0
+        ) {
+
+            out.add(
+                word.substring(
+                    0,
+                    index,
+                ) +
+                    "nD" +
+                    word.substring(
+                        index + 2
+                    )
+            )
+
+            index =
+                lower.indexOf(
+                    "nd",
+                    index + 2,
+                )
+        }
+
+        /*
+         * mb is already understood as a sanyaka cluster by converter.
+         *
+         * Keep a normal m+b spelling possibility available by allowing
+         * a separating form only when explicitly useful later.
+         *
+         * No expansion needed here.
+         */
+
+        return out
+    }
+
+    /**
+     * ================================================================
+     * STANDALONE VOWELS
+     * ================================================================
+     */
+    private fun standaloneVowelVariants(
+        word: String,
+    ): Set<String> {
+
+        val out =
+            linkedSetOf<String>()
+
+        when (
+            word.lowercase()
+        ) {
+
+            "a" -> {
+                out.add("ae")
+                out.add("aa")
+                out.add("aee")
+            }
+
+            "ae" -> {
+                out.add("a")
+                out.add("aee")
+                out.add("aa")
+            }
+
+            "aa" -> {
+                out.add("a")
+                out.add("ae")
+                out.add("aee")
+            }
+
+            "aee" -> {
+                out.add("ae")
+                out.add("aa")
+                out.add("a")
+            }
+
+            "i" ->
+                out.add("ii")
+
+            "ii" ->
+                out.add("i")
+
+            "u" ->
+                out.add("uu")
+
+            "uu" ->
+                out.add("u")
+
+            "e" ->
+                out.add("ee")
+
+            "ee" ->
+                out.add("e")
+
+            "o" ->
+                out.add("oo")
+
+            "oo" ->
+                out.add("o")
+        }
+
+        return out
+    }
+
+    /**
+     * ================================================================
+     * TRAILING VOWEL
+     * ================================================================
+     */
+    private fun consonantVowelStemVariants(
+        word: String,
+    ): Set<String> {
+
+        val out =
+            linkedSetOf<String>()
+
+        val lower =
+            word.lowercase()
+
+        when {
+
+            lower.endsWith("aee") &&
+                lower.length > 3 -> {
+
+                val stem =
+                    word.dropLast(3)
+
+                if (
+                    hasConsonantStem(
+                        stem
+                    )
+                ) {
+
+                    out.add(
+                        stem + "ae"
+                    )
+
+                    out.add(
+                        stem + "aa"
+                    )
+
+                    out.add(
+                        stem + "a"
+                    )
+                }
+            }
+
+            lower.endsWith("ae") &&
+                lower.length > 2 -> {
+
+                val stem =
+                    word.dropLast(2)
+
+                if (
+                    hasConsonantStem(
+                        stem
+                    )
+                ) {
+
+                    out.add(
+                        stem + "a"
+                    )
+
+                    out.add(
+                        stem + "aee"
+                    )
+
+                    out.add(
+                        stem + "aa"
+                    )
+                }
+            }
+
+            lower.endsWith("aa") &&
+                lower.length > 2 -> {
+
+                val stem =
+                    word.dropLast(2)
+
+                if (
+                    hasConsonantStem(
+                        stem
+                    )
+                ) {
+
+                    out.add(
+                        stem + "a"
+                    )
+
+                    out.add(
+                        stem + "ae"
+                    )
+                }
+            }
+
+            lower.endsWith("a") &&
+                !lower.endsWith("aa") &&
+                !lower.endsWith("ae") &&
+                lower.length > 1 -> {
+
+                val stem =
+                    word.dropLast(1)
+
+                if (
+                    hasConsonantStem(
+                        stem
+                    )
+                ) {
+
+                    /*
+                     * æ is more useful for live Sinhala ambiguity than
+                     * broad long-vowel expansion, so put it first.
+                     */
+
+                    out.add(
+                        stem + "ae"
+                    )
+
+                    out.add(
+                        stem
+                    )
+
+                    out.add(
+                        stem + "aa"
+                    )
+
+                    out.add(
+                        stem + "aee"
+                    )
+                }
+            }
+        }
+
+        return out
+    }
+
+    /**
+     * Short/long vowel alternatives.
+     */
+    private fun vowelLengthVariants(
+        word: String,
+    ): Set<String> {
+
+        val out =
+            linkedSetOf<String>()
+
+        toggleSuffix(
+            word,
+            "oo",
+            "o",
+            out,
+        )
+
+        toggleSuffix(
+            word,
+            "o",
+            "oo",
+            out,
+        ) {
+            !word.lowercase()
+                .endsWith("oo")
+        }
+
+        toggleSuffix(
+            word,
+            "ee",
+            "e",
+            out,
+        )
+
+        toggleSuffix(
+            word,
+            "e",
+            "ee",
+            out,
+        ) {
+
+            val lower =
+                word.lowercase()
+
+            !lower.endsWith("ee") &&
+                !lower.endsWith("ae")
+        }
+
+        toggleSuffix(
+            word,
+            "ii",
+            "i",
+            out,
+        )
+
+        toggleSuffix(
+            word,
+            "i",
+            "ii",
+            out,
+        ) {
+            !word.lowercase()
+                .endsWith("ii")
+        }
+
+        toggleSuffix(
+            word,
+            "uu",
+            "u",
+            out,
+        )
+
+        toggleSuffix(
+            word,
+            "u",
+            "uu",
+            out,
+        ) {
+            !word.lowercase()
+                .endsWith("uu")
+        }
+
+        return out
+    }
+
+    /**
+     * Limited internal vowel length ambiguity.
+     *
+     * ONE change per candidate.
+     */
+    private fun internalSyllableVowelVariants(
+        word: String,
+    ): Set<String> {
+
+        val out =
+            linkedSetOf<String>()
+
+        val lower =
+            word.lowercase()
+
+        for (
+            i in
+            1 until
+                word.length - 1
+        ) {
+
+            val previous =
+                lower[i - 1]
+
+            val current =
+                lower[i]
+
+            val next =
+                lower[i + 1]
+
+            if (
+                previous in ROMAN_VOWELS ||
+                next in ROMAN_VOWELS
+            ) {
+                continue
+            }
+
+            when (
+                current
+            ) {
+
+                'a' -> {
+
+                    if (
+                        lower.getOrNull(
+                            i + 1
+                        ) != 'a'
+                    ) {
+
+                        out.add(
+                            word.substring(
+                                0,
+                                i,
+                            ) +
+                                "aa" +
+                                word.substring(
+                                    i + 1
+                                )
+                        )
+                    }
+                }
+
+                'i' -> {
+
+                    if (
+                        lower.getOrNull(
+                            i + 1
+                        ) != 'i'
+                    ) {
+
+                        out.add(
+                            word.substring(
+                                0,
+                                i,
+                            ) +
+                                "ii" +
+                                word.substring(
+                                    i + 1
+                                )
+                        )
+                    }
+                }
+
+                'u' -> {
+
+                    if (
+                        lower.getOrNull(
+                            i + 1
+                        ) != 'u'
+                    ) {
+
+                        out.add(
+                            word.substring(
+                                0,
+                                i,
+                            ) +
+                                "uu" +
+                                word.substring(
+                                    i + 1
+                                )
+                        )
+                    }
+                }
+
+                'e' -> {
+
+                    if (
+                        lower.getOrNull(
+                            i + 1
+                        ) != 'e'
+                    ) {
+
+                        out.add(
+                            word.substring(
+                                0,
+                                i,
+                            ) +
+                                "ee" +
+                                word.substring(
+                                    i + 1
+                                )
+                        )
+                    }
+                }
+
+                'o' -> {
+
+                    if (
+                        lower.getOrNull(
+                            i + 1
+                        ) != 'o'
+                    ) {
+
+                        out.add(
+                            word.substring(
+                                0,
+                                i,
+                            ) +
+                                "oo" +
+                                word.substring(
+                                    i + 1
+                                )
+                        )
+                    }
+                }
+            }
+
+            if (
+                out.size >=
+                MAX_INTERNAL_VOWEL_VARIANTS
+            ) {
+                break
+            }
+        }
+
+        return out
+    }
+
+    /**
+     * ae / aa / aee alternatives.
+     *
+     * Kept lower priority than simple a -> ae.
+     */
+    private fun vowelAeVariants(
+        word: String,
+    ): Set<String> {
+
+        val out =
+            linkedSetOf<String>()
+
+        replaceFirstOccurrence(
+            word,
+            "aee",
+            "ae",
+            out,
+        )
+
+        replaceFirstOccurrence(
+            word,
+            "aee",
+            "aa",
+            out,
+        )
+
+        replaceFirstOccurrence(
+            word,
+            "ae",
+            "a",
+            out,
+        )
+
+        replaceFirstOccurrence(
+            word,
+            "ae",
+            "aee",
+            out,
+        )
+
+        replaceFirstOccurrence(
+            word,
+            "aa",
+            "a",
+            out,
+        )
+
+        replaceFirstOccurrence(
+            word,
+            "aa",
+            "ae",
+            out,
+        )
+
+        return out
+    }
+
+    /**
+     * Lower-priority consonant homophones.
+     *
+     * These remain useful, but they should never consume the early
+     * real-time slots needed for:
+     *
+     * d/D
+     * t/th
+     * n/N/x
+     * a/ae
+     */
+    private fun secondaryHomophoneVariants(
+        word: String,
+    ): Set<String> {
+
+        val out =
+            linkedSetOf<String>()
+
+        /*
+         * Aspirated / related consonants.
+         */
+
+        replaceFirstOccurrence(
+            word,
+            "kh",
+            "K",
+            out,
+        )
+
+        replaceFirstOccurrence(
+            word,
+            "K",
+            "kh",
+            out,
+        )
+
+        replaceFirstOccurrence(
+            word,
+            "gh",
+            "G",
+            out,
+        )
+
+        replaceFirstOccurrence(
+            word,
+            "G",
+            "gh",
+            out,
+        )
+
+        replaceFirstOccurrence(
+            word,
+            "ph",
+            "P",
+            out,
+        )
+
+        replaceFirstOccurrence(
+            word,
+            "P",
+            "ph",
+            out,
+        )
+
+        replaceFirstOccurrence(
+            word,
+            "bh",
+            "B",
+            out,
+        )
+
+        replaceFirstOccurrence(
+            word,
+            "B",
+            "bh",
+            out,
+        )
+
+        /*
+         * ශ / ෂ / ස family
+         */
+
+        replaceFirstOccurrence(
+            word,
+            "sh",
+            "Sh",
+            out,
+        )
+
+        replaceFirstOccurrence(
+            word,
+            "Sh",
+            "sh",
+            out,
+        )
+
+        replaceEachSingleLetter(
+            word = word,
+            from = 's',
+            to = 'S',
+            out = out,
+            skipIfPartOf = listOf(
+                "sh",
+            ),
+        )
+
+        replaceEachSingleLetter(
+            word = word,
+            from = 'S',
+            to = 's',
+            out = out,
+        )
+
+        /*
+         * ජ / ඣ-style existing converter distinction
+         */
+
+        replaceEachSingleLetter(
+            word = word,
+            from = 'j',
+            to = 'J',
+            out = out,
+            skipIfPartOf = listOf(
+                "jh",
+            ),
+        )
+
+        replaceEachSingleLetter(
+            word = word,
+            from = 'J',
+            to = 'j',
+            out = out,
+        )
+
+        return out
+    }
+
+    private fun hasConsonantStem(
+        stem: String,
+    ): Boolean {
+
+        if (
+            stem.isEmpty()
+        ) {
+            return false
+        }
+
+        return stem
+            .last()
+            .lowercaseChar() !in
+            ROMAN_VOWELS
+    }
+
+    private fun isVowelOnlyWord(
+        word: String,
+    ): Boolean {
+
+        return word.all {
+            it.lowercaseChar() in
+                ROMAN_VOWELS
+        }
+    }
+
+    /**
+     * Replace each occurrence of one single Roman symbol.
+     *
+     * Generates ONE changed spelling per occurrence.
+     */
+    private fun replaceEachSingleLetter(
+        word: String,
+        from: Char,
+        to: Char,
+        out: MutableSet<String>,
+        skipIfPartOf: List<String> =
+            emptyList(),
+    ) {
+
+        for (
+            i in
+            word.indices
+        ) {
+
+            if (
+                word[i] != from
+            ) {
+                continue
+            }
+
+            var blocked =
+                false
+
+            for (
+                sequence in
+                skipIfPartOf
+            ) {
+
+                if (
+                    occurrenceBelongsToSequence(
+                        word = word,
+                        index = i,
+                        sequence = sequence,
+                    )
+                ) {
+
+                    blocked =
+                        true
+
+                    break
+                }
+            }
+
+            if (blocked) {
+                continue
+            }
+
+            out.add(
+                word.substring(
+                    0,
+                    i,
+                ) +
+                    to +
+                    word.substring(
+                        i + 1
+                    )
+            )
+        }
+    }
+
+    private fun replaceBareLetter(
+        word: String,
+        from: Char,
+        replacement: String,
+        out: MutableSet<String>,
+        blockedFollower: Char,
+    ) {
+
+        for (
+            i in
+            word.indices
+        ) {
+
+            if (
+                !word[i]
+                    .equals(
+                        from,
+                        ignoreCase = false,
+                    )
+            ) {
+                continue
+            }
+
+            if (
+                word.getOrNull(
+                    i + 1
+                ) == blockedFollower
+            ) {
+                continue
+            }
+
+            out.add(
+                word.substring(
+                    0,
+                    i,
+                ) +
+                    replacement +
+                    word.substring(
+                        i + 1
+                    )
+            )
+        }
+    }
+
+    private fun replaceEachDigraph(
+        word: String,
+        from: String,
+        to: String,
+        out: MutableSet<String>,
+    ) {
+
+        var start =
+            0
+
+        while (
+            start <=
+            word.length -
+                from.length
+        ) {
+
+            val index =
+                word.indexOf(
+                    from,
+                    startIndex = start,
+                    ignoreCase = true,
+                )
+
+            if (
+                index < 0
+            ) {
+                break
+            }
+
+            out.add(
+                word.substring(
+                    0,
+                    index,
+                ) +
+                    to +
+                    word.substring(
+                        index +
+                            from.length
+                    )
+            )
+
+            start =
+                index +
+                    from.length
+        }
+    }
+
+    private fun occurrenceBelongsToSequence(
+        word: String,
+        index: Int,
+        sequence: String,
+    ): Boolean {
+
+        val lower =
+            word.lowercase()
+
+        val target =
+            sequence.lowercase()
+
+        /*
+         * Could this character be anywhere inside the sequence?
+         */
+        for (
+            offset in
+            target.indices
+        ) {
+
+            val start =
+                index -
+                    offset
+
+            if (
+                start < 0
+            ) {
+                continue
+            }
+
+            if (
+                start +
+                    target.length >
+                lower.length
+            ) {
+                continue
+            }
+
+            if (
+                lower.regionMatches(
+                    start,
+                    target,
+                    0,
+                    target.length,
+                )
+            ) {
+                return true
+            }
+        }
+
+        return false
     }
 
     private inline fun toggleSuffix(
@@ -471,24 +1670,89 @@ object SinglishAmbiguityVariants {
         from: String,
         to: String,
         out: MutableSet<String>,
-        extra: () -> Boolean = { true },
+        extra: () -> Boolean = {
+            true
+        },
     ) {
-        if (extra() && word.endsWith(from)) {
-            out.add(word.dropLast(from.length) + to)
+
+        if (
+            extra() &&
+            word.endsWith(
+                from,
+                ignoreCase = true,
+            )
+        ) {
+
+            out.add(
+                word.dropLast(
+                    from.length
+                ) +
+                    to
+            )
         }
     }
 
-    private inline fun replaceFirst(
+    private fun replaceFirstOccurrence(
         word: String,
         from: String,
         to: String,
         out: MutableSet<String>,
-        extra: () -> Boolean = { true },
     ) {
-        if (!extra()) return
-        val index = word.indexOf(from, ignoreCase = false)
-        if (index >= 0) {
-            out.add(word.replaceRange(index, index + from.length, to))
+
+        val index =
+            word.indexOf(
+                from,
+                ignoreCase = false,
+            )
+
+        if (
+            index < 0
+        ) {
+            return
         }
+
+        out.add(
+            word.replaceRange(
+                index,
+                index +
+                    from.length,
+                to,
+            )
+        )
     }
+
+    private const val ROMAN_VOWELS =
+        "aeiou"
+
+    /**
+     * Consonants after which informal "n" is often compatible with
+     * anusvara in Sinhala spelling.
+     *
+     * Keep this deliberately conservative.
+     */
+    private const val ANUSVARA_FOLLOWERS =
+        "kgcjtdpbmsh"
+
+    /**
+     * The engine currently takes only the first handful for live corpus
+     * searching. We can generate somewhat more here for other callers,
+     * while still keeping this method bounded.
+     */
+    private const val MAX_GENERATED_VARIANTS =
+        24
+
+    private const val MAX_COMBINATION_BASES =
+        4
+
+    private const val MAX_AE_COMBINATIONS_PER_BASE =
+        2
+
+    private const val MAX_AE_BASES =
+        2
+
+    private const val MAX_SECONDARY_COMBINATIONS =
+        2
+
+    private const val MAX_INTERNAL_VOWEL_VARIANTS =
+        4
 }
