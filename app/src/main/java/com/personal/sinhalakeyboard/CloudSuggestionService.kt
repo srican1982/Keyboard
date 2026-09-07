@@ -106,8 +106,10 @@ class CloudSuggestionService {
 
                 Use ${tone.aiDescription()}.
 
-                Predict what the user is most likely to type NEXT based on
-                the message so far.
+                The message so far may contain typos, informal spelling,
+                or phonetic English. Infer what the user meant, then
+                predict the next word(s) as if the text were already
+                corrected.
 
                 Return ONLY a JSON array containing up to $limit likely
                 next words or very short phrases.
@@ -321,24 +323,27 @@ class CloudSuggestionService {
 
             Use ${tone.aiDescription()}.
 
-            The user is currently typing an unfinished word.
-
-            Predict the complete word they most likely intend based on:
-            - the partial word
+            The user is typing an unfinished or misspelled English word.
+            Infer the intended word from:
+            - the typed letters (even if wrong, phonetic, or incomplete)
             - the preceding sentence context
+            - common typos, missing letters, swapped letters, and informal spelling
 
-            Return ONLY a JSON array containing up to $limit complete words.
+            Do NOT require the suggestion to start with the same letters.
+            If the typed text is a typo, return the correctly spelled word.
 
-            Prefer words beginning with the same letters as the partial word,
-            but allow a contextually obvious typo correction.
+            Return ONLY a JSON array containing up to $limit complete English words.
+            Rank the most likely intended word first.
 
-            Rank the most likely word first.
+            Examples:
+            "teh" -> ["the"]
+            "becos" -> ["because"]
+            "recieve" -> ["receive"]
+            "wana" -> ["want"]
+            "hel" -> ["hello", "help"]
 
             No explanation.
             No markdown.
-
-            Example:
-            ["hello", "help"]
             """.trimIndent()
 
         val user =
@@ -411,7 +416,9 @@ class CloudSuggestionService {
 
             Use ${tone.aiDescription()}.
 
-            Predict what the user is most likely to type next.
+            The text so far may contain typos or informal spelling.
+            Infer the intended meaning first, then predict what the
+            user is most likely to type next.
 
             Return ONLY a JSON array containing up to $limit suggestions.
 
@@ -421,7 +428,6 @@ class CloudSuggestionService {
             - a brief continuation
 
             Prefer concise useful completions.
-
             Rank the most likely suggestion first.
 
             Do not repeat the entire text already typed.
@@ -519,18 +525,21 @@ class CloudSuggestionService {
 
             Use ${tone.aiDescription()}.
 
-            Predict the most natural ways to continue what they are writing.
-
-            The final word may currently be incomplete.
+            The typed text may contain typos, phonetic spelling, or an
+            unfinished misspelled word. Infer what they meant, then
+            continue naturally from that intended meaning.
 
             IMPORTANT INSERTION RULE:
 
-            Return the FULL completion of the CURRENT unfinished word plus
-            the words that should naturally follow it.
+            Return the FULL completion of the CURRENT unfinished/misspelled
+            word plus the words that should naturally follow it.
+
+            If the current word is a typo, start the suggestion with the
+            correctly spelled intended word.
 
             Do NOT repeat words that came before the current unfinished word.
 
-            Example:
+            Examples:
 
             Existing text:
             I want to t
@@ -539,12 +548,7 @@ class CloudSuggestionService {
             t
 
             GOOD:
-            ["tell you something important", "talk to you about this", "thank you for your help"]
-
-            BAD:
-            ["I want to tell you something important"]
-
-            Another example:
+            ["tell you something important", "talk to you about this"]
 
             Existing text:
             Can you ple
@@ -555,10 +559,29 @@ class CloudSuggestionService {
             GOOD:
             ["please send me the file", "please let me know"]
 
+            Existing text:
+            I wana tel
+
+            Current unfinished word:
+            tel
+
+            GOOD:
+            ["tell you something", "tell them later"]
+
+            Existing text:
+            becos i
+
+            Current unfinished word:
+            i
+
+            GOOD:
+            ["I need your help", "I will be late"]
+
+            BAD:
+            ["I want to tell you something important"]
+
             Return ONLY a JSON array containing up to $limit likely continuations.
-
             Each suggestion should normally be about 2 to 8 words.
-
             Rank the most likely continuation first.
 
             No explanation.
