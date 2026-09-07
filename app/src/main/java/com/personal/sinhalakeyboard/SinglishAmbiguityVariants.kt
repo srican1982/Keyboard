@@ -949,6 +949,10 @@ object SinglishAmbiguityVariants {
                     out.add(
                         stem + "ae"
                     )
+
+                    out.add(
+                        stem + "aee"
+                    )
                 }
             }
 
