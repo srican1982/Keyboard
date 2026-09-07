@@ -3,49 +3,104 @@ package com.personal.sinhalakeyboard
 import kotlin.math.ln
 
 /**
- * Scores and orders Sinhala suggestion chips.
+ * Ranks Sinhala suggestions using linguistic relevance first,
+ * personal learning second, and corpus frequency third.
  *
- * Ranking philosophy:
+ * IMPORTANT:
+ * A mechanically generated Sinhala form is NOT automatically assumed
+ * to be the correct word.
  *
- * 1. Direct / homophone readings should rank very strongly.
- * 2. Personal usage should strongly influence ranking.
- * 3. Corpus frequency should help, but must not dominate.
- * 4. Length is only a final tie-breaker.
+ * Example:
+ *
+ * Roman: patiyo
+ *
+ * If:
+ *   පැටියෝ = dictionary/corpus-supported candidate
+ *   පටියෝ   = only a mechanical converter output
+ *
+ * then පැටියෝ should be able to rank above පටියෝ.
  */
 object SinhalaSuggestionRanker {
 
-    private const val HOMOPHONE_BONUS = 1_000_000
-    private const val PERSONAL_COUNT_WEIGHT = 100_000
+    /*
+     * Source bonuses.
+     *
+     * Dictionary-supported words are strongest because they represent an
+     * explicit known Roman -> Sinhala mapping.
+     *
+     * Exact personal mappings are also strong, but not permanently unbeatable.
+     */
+    private const val DICTIONARY_EXACT_BONUS = 1_500_000
 
+    private const val PERSONAL_EXACT_BONUS = 1_200_000
+
+    private const val DIRECT_READING_BONUS = 650_000
+
+    private const val VARIANT_READING_BONUS = 350_000
+
+    /*
+     * Personal usage of the Sinhala word itself.
+     */
+    private const val PERSONAL_COUNT_WEIGHT = 80_000
+
+    /**
+     * Old arguments remain so existing callers continue to compile.
+     *
+     * New optional arguments allow SinglishEngine to tell us WHERE each
+     * candidate came from.
+     */
     fun rank(
         typedRomanLength: Int,
         corpusFrequencies: Map<String, Int>,
         personalCounts: Map<String, Int>,
         homophoneReadings: Collection<String>,
         limit: Int,
+
+        // New source-aware inputs.
+        directReadings: Collection<String> = emptyList(),
+        dictionaryExactReadings: Collection<String> = emptyList(),
+        variantReadings: Collection<String> = emptyList(),
+        personalExactReadings: Collection<String> = emptyList(),
     ): List<String> {
 
         if (limit <= 0) {
             return emptyList()
         }
 
-        /*
-         * Preserve lookup efficiency.
-         */
-        val homophoneSet = homophoneReadings.toHashSet()
+        val homophoneSet =
+            homophoneReadings.toHashSet()
+
+        val directSet =
+            directReadings.toHashSet()
+
+        val dictionarySet =
+            dictionaryExactReadings.toHashSet()
+
+        val variantSet =
+            variantReadings.toHashSet()
+
+        val personalExactSet =
+            personalExactReadings.toHashSet()
 
         /*
          * Candidate pool.
          *
-         * Direct/homophone readings are intentionally inserted first.
+         * Include every source so valid zero-frequency candidates are
+         * not accidentally discarded.
          */
-        val candidateWords = linkedSetOf<String>()
+        val candidateWords =
+            linkedSetOf<String>()
 
+        candidateWords.addAll(dictionaryExactReadings)
+        candidateWords.addAll(personalExactReadings)
+        candidateWords.addAll(directReadings)
+        candidateWords.addAll(variantReadings)
         candidateWords.addAll(homophoneReadings)
         candidateWords.addAll(personalCounts.keys)
         candidateWords.addAll(corpusFrequencies.keys)
 
-        val ranked = ArrayList<RankedCandidate>()
+        val ranked =
+            ArrayList<RankedCandidate>()
 
         for (word in candidateWords) {
 
@@ -53,9 +108,6 @@ object SinhalaSuggestionRanker {
                 continue
             }
 
-            /*
-             * Suggestions should be a single word during live completion.
-             */
             if (word.contains(' ')) {
                 continue
             }
@@ -64,56 +116,113 @@ object SinhalaSuggestionRanker {
                 continue
             }
 
-            val fromCorpus = word in corpusFrequencies
+            val fromCorpus =
+                word in corpusFrequencies
 
             if (
-                !SinhalaSuggestionRules.isReasonableSinhalaSuggestion(
-                    sinhala = word,
-                    typedRomanLength = typedRomanLength,
-                    fromCorpus = fromCorpus,
-                )
+                !SinhalaSuggestionRules
+                    .isReasonableSinhalaSuggestion(
+                        sinhala = word,
+                        typedRomanLength = typedRomanLength,
+                        fromCorpus = fromCorpus,
+                    )
             ) {
                 continue
             }
 
+            val corpusFrequency =
+                corpusFrequencies[word] ?: 0
+
             val personalCount =
                 personalCounts[word] ?: 0
 
-            val corpusFrequency =
-                corpusFrequencies[word] ?: 0
+            val isDictionaryExact =
+                word in dictionarySet
+
+            val isPersonalExact =
+                word in personalExactSet
+
+            val isDirect =
+                word in directSet
+
+            val isVariant =
+                word in variantSet
 
             val isHomophone =
                 word in homophoneSet
 
             /*
-             * IMPORTANT:
+             * Linguistic/source relevance.
              *
-             * Raw corpus frequency is NOT used directly.
-             *
-             * A corpus word with frequency 2,000,000 should not beat an exact
-             * phonetic reading purely because it is globally common.
+             * Notice:
+             * direct conversion gets a useful bonus,
+             * but dictionary/corpus evidence can still beat it.
              */
-            val corpusScore =
-                logarithmicCorpusScore(corpusFrequency)
+            var relevanceScore = 0
+
+            if (isDictionaryExact) {
+                relevanceScore +=
+                    DICTIONARY_EXACT_BONUS
+            }
+
+            if (isPersonalExact) {
+                relevanceScore +=
+                    PERSONAL_EXACT_BONUS
+            }
+
+            if (isDirect) {
+                relevanceScore +=
+                    DIRECT_READING_BONUS
+            }
+
+            if (isVariant) {
+                relevanceScore +=
+                    VARIANT_READING_BONUS
+            }
 
             /*
-             * Personal history is intentionally strong.
+             * Backward compatibility.
              *
-             * If the user repeatedly chooses the same Sinhala word,
-             * that preference should become obvious quickly.
+             * Until SinglishEngine is updated, old homophone readings still
+             * receive some relevance so existing behavior doesn't collapse.
+             */
+            if (
+                isHomophone &&
+                !isDirect &&
+                !isVariant &&
+                !isDictionaryExact
+            ) {
+                relevanceScore +=
+                    VARIANT_READING_BONUS
+            }
+
+            /*
+             * Personal history is strong but does not automatically override
+             * all linguistic evidence.
              */
             val personalScore =
-                personalCount * PERSONAL_COUNT_WEIGHT
+                personalCount *
+                    PERSONAL_COUNT_WEIGHT
 
             /*
-             * Direct / homophone forms get a strong relevance bonus.
+             * Compress corpus frequency.
              *
-             * This prevents the correct transliteration from disappearing
-             * merely because another broad corpus completion is common.
+             * Very common Sinhala words remain preferred over rare words,
+             * but raw million-level frequency values cannot dominate
+             * everything else.
              */
-            val relevanceScore =
-                if (isHomophone) {
-                    HOMOPHONE_BONUS
+            val corpusScore =
+                logarithmicCorpusScore(
+                    corpusFrequency
+                )
+
+            /*
+             * Corpus existence itself is useful evidence that this is an
+             * actual attested Sinhala word.
+             */
+            val corpusExistenceBonus =
+                if (corpusFrequency > 0) {
+                    120_000
                 } else {
                     0
                 }
@@ -121,14 +230,11 @@ object SinhalaSuggestionRanker {
             val totalScore =
                 relevanceScore +
                     personalScore +
-                    corpusScore
+                    corpusScore +
+                    corpusExistenceBonus
 
             /*
-             * Unlike the old ranker, zero-frequency homophones are NOT
-             * filtered out.
-             *
-             * A direct transliteration is still useful even if it does not
-             * exist in the corpus.
+             * Reject candidates with absolutely no evidence.
              */
             if (
                 totalScore <= 0 &&
@@ -141,7 +247,10 @@ object SinhalaSuggestionRanker {
                 RankedCandidate(
                     word = word,
                     totalScore = totalScore,
-                    isHomophone = isHomophone,
+                    dictionaryExact = isDictionaryExact,
+                    personalExact = isPersonalExact,
+                    direct = isDirect,
+                    variant = isVariant,
                     personalCount = personalCount,
                     corpusFrequency = corpusFrequency,
                 )
@@ -150,40 +259,55 @@ object SinhalaSuggestionRanker {
 
         return ranked
             .sortedWith(
+
                 compareByDescending<RankedCandidate> {
                     it.totalScore
                 }
+
                     /*
-                     * If two words happen to have the same score,
-                     * prefer the direct/homophone reading.
+                     * Strongest tie-breakers.
                      */
                     .thenByDescending {
-                        it.isHomophone
+                        it.dictionaryExact
                     }
-                    /*
-                     * Then prefer what the user has personally selected.
-                     */
+
+                    .thenByDescending {
+                        it.personalExact
+                    }
+
+                    .thenByDescending {
+                        it.direct
+                    }
+
+                    .thenByDescending {
+                        it.variant
+                    }
+
                     .thenByDescending {
                         it.personalCount
                     }
-                    /*
-                     * Then use raw corpus frequency only as a tie-break.
-                     */
+
                     .thenByDescending {
                         it.corpusFrequency
                     }
+
                     /*
-                     * Sinhala Unicode length is only a weak final tie-breaker.
+                     * Only weak final tie-breakers.
                      */
                     .thenBy {
                         lengthDistance(
-                            sinhalaLength = it.word.length,
-                            typedRomanLength = typedRomanLength,
+                            sinhalaLength =
+                                it.word.length,
+
+                            typedRomanLength =
+                                typedRomanLength,
                         )
                     }
+
                     .thenBy {
                         it.word.length
                     }
+
                     .thenBy {
                         it.word
                     },
@@ -195,17 +319,7 @@ object SinhalaSuggestionRanker {
     }
 
     /**
-     * Compress very large corpus-frequency differences.
-     *
-     * Example approximate values:
-     *
-     * frequency = 10        -> ~2,397
-     * frequency = 100       -> ~4,615
-     * frequency = 10,000    -> ~9,210
-     * frequency = 1,000,000 -> ~13,815
-     *
-     * So globally common words still get rewarded, but cannot overwhelm
-     * phonetic relevance.
+     * Converts huge raw frequencies into a manageable score.
      */
     private fun logarithmicCorpusScore(
         frequency: Int,
@@ -216,7 +330,10 @@ object SinhalaSuggestionRanker {
         }
 
         return (
-            ln(frequency.toDouble() + 1.0) * 1000.0
+            ln(
+                frequency.toDouble() +
+                    1.0
+            ) * 1000.0
         ).toInt()
     }
 
@@ -224,16 +341,16 @@ object SinhalaSuggestionRanker {
         text: String,
     ): Boolean {
 
-        return text.any { char ->
-            char.code in 0x0D80..0x0DFF
+        return text.any {
+            it.code in 0x0D80..0x0DFF
         }
     }
 
     /**
-     * Keep this only as a weak tie-breaker.
+     * Only a weak tie-breaker.
      *
-     * Roman character count and Sinhala Unicode length do not map perfectly,
-     * so this should never strongly influence ranking.
+     * Sinhala Unicode length and Roman input length do not have a reliable
+     * one-to-one relationship.
      */
     private fun lengthDistance(
         sinhalaLength: Int,
@@ -244,20 +361,32 @@ object SinhalaSuggestionRanker {
             (typedRomanLength * 1.15)
                 .toInt()
                 .coerceIn(
-                    minimumValue = 1,
-                    maximumValue = 48,
+                    1,
+                    48,
                 )
 
         return kotlin.math.abs(
-            sinhalaLength - expected
+            sinhalaLength -
+                expected
         )
     }
 
     private data class RankedCandidate(
+
         val word: String,
+
         val totalScore: Int,
-        val isHomophone: Boolean,
+
+        val dictionaryExact: Boolean,
+
+        val personalExact: Boolean,
+
+        val direct: Boolean,
+
+        val variant: Boolean,
+
         val personalCount: Int,
+
         val corpusFrequency: Int,
     )
 }
