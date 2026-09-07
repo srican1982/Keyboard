@@ -87,9 +87,6 @@ class SinglishAmbiguityTest {
         assertTrue(variants.contains("hanDa"))
         assertTrue(variants.contains("haendha"))
         assertFalse(variants.any { it.contains(' ') })
-        val readings = AlternateSinhalaReadings.forRoman("handa")
-        assertTrue(readings.contains(spoon))
-        assertFalse(readings.any { it.contains(' ') })
     }
 
     @Test

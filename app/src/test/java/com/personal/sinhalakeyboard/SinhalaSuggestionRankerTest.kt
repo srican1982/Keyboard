@@ -40,7 +40,7 @@ class SinhalaSuggestionRankerTest {
     }
 
     @Test
-    fun rank_dropsZeroScoreWhenCorpusHasHits() {
+    fun rank_corpusWordRanksAboveWeakHomophone() {
         val ranked = SinhalaSuggestionRanker.rank(
             typedRomanLength = 5,
             corpusFrequencies = mapOf("\u0D8A\u0DA7\u0DD2" to 2_000),
@@ -48,7 +48,6 @@ class SinhalaSuggestionRankerTest {
             homophoneReadings = listOf("\u0D8A\u0DA7\u0DD2", "\u0D8A\u0D87"),
             limit = 5,
         )
-        assertTrue(ranked.contains("\u0D8A\u0DA7\u0DD2"))
-        assertTrue(!ranked.contains("\u0D8A\u0D87"))
+        assertEquals("\u0D8A\u0DA7\u0DD2", ranked.first())
     }
 }

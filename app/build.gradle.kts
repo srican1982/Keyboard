@@ -11,8 +11,8 @@ android {
         applicationId = "com.personal.sinhalakeyboard"
         minSdk = 26
         targetSdk = 34
-        versionCode = 84
-        versionName = "2.18.1"
+        versionCode = 85
+        versionName = "2.18.2"
     }
 
     buildTypes {

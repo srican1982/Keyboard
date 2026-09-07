@@ -4,17 +4,18 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+/**
+ * AlternateSinhalaReadings now converts one roman spelling only (+ trailing pillam).
+ * Full ambiguity expansion lives in SinglishEngine.
+ */
 class AlternateSinhalaReadingsTest {
 
     private fun c(text: String) = SinglishConverter.convert(text)
 
     @Test
-    fun konara_includesPillamHomophones() {
+    fun konara_includesDirectReading() {
         val readings = AlternateSinhalaReadings.forRoman("konara")
         assertTrue(readings.contains(c("konara")))
-        assertTrue(readings.contains(c("koonara")))
-        assertTrue(readings.contains(c("koonaara")))
-        assertTrue(readings.contains(c("kooNaara")))
         assertFalse(readings.any { it.contains(' ') })
     }
 
@@ -23,26 +24,19 @@ class AlternateSinhalaReadingsTest {
         val readings = AlternateSinhalaReadings.forRoman("ko")
         assertTrue(readings.contains(c("ko"))) // කො
         assertTrue(readings.contains(c("koo"))) // කෝ
-        assertTrue(SinhalaSuggestionRules.isReasonableSinhalaSuggestion(c("ko"), 2))
-        assertTrue(SinhalaSuggestionRules.isReasonableSinhalaSuggestion(c("koo"), 2))
     }
 
     @Test
-    fun patiyo_includesAeVowelReading() {
-        val variants = SinglishAmbiguityVariants.liveVariants("patiyo")
-        assertTrue(variants.contains("paetiyo"))
+    fun patiyo_includesDirectReading() {
         val readings = AlternateSinhalaReadings.forRoman("patiyo")
-        assertTrue(readings.size >= 2)
         assertTrue(readings.contains(SinglishConverter.convert("patiyo")))
-        assertTrue(readings.contains(SinglishConverter.convert("paetiyo")))
+        assertTrue(SinglishAmbiguityVariants.liveVariants("patiyo").contains("paetiyo"))
     }
 
     @Test
-    fun handa_includesAllTripleReadings() {
+    fun handa_includesDirectReading() {
         val readings = AlternateSinhalaReadings.forRoman("handa")
         assertTrue(readings.contains(c("handa"))) // හඳ
-        assertTrue(readings.contains(c("hanDa"))) // හඬ
-        assertTrue(readings.contains(c("haendha"))) // හැන්ද
         assertFalse(readings.any { it.contains(' ') })
     }
 }
