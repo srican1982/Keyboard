@@ -591,15 +591,15 @@ class KeyboardService : InputMethodService() {
 
     private fun startRepeat(action: () -> Unit) {
         stopRepeat()
-        var delay = 60L
+        var delay = 80L
         repeatRunnable = object : Runnable {
             override fun run() {
                 action()
-                delay = (delay * 0.72).toLong().coerceAtLeast(22L)
+                delay = (delay * 0.78).toLong().coerceAtLeast(36L)
                 repeatHandler.postDelayed(this, delay)
             }
         }
-        repeatHandler.postDelayed(repeatRunnable!!, 220L)
+        repeatHandler.postDelayed(repeatRunnable!!, 260L)
     }
 
     private fun stopRepeat() {
