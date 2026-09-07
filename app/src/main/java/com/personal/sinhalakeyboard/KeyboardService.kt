@@ -103,6 +103,9 @@ class KeyboardService : InputMethodService() {
 
     private companion object {
         const val SUGGEST_DEBOUNCE_MS = 60L
+
+        // Cloud AI is sent only after the user pauses typing.
+        const val ENGLISH_AI_PAUSE_MS = 700L
     }
 
     private val letterKeyIds = listOf(
@@ -840,10 +843,37 @@ class KeyboardService : InputMethodService() {
         val typed = sinhalaBuffer.toString()
         sinhalaLocalSuggestJob?.cancel()
         sinhalaLocalSuggestJob = scope.launch {
-            val items = withContext(Dispatchers.Default) {
+            val engineItems = withContext(Dispatchers.Default) {
                 singlishEngine.sinhalaSuggestions(typed)
             }
+
             if (sinhalaBuffer.toString() != typed) return@launch
+
+            /*
+             * If the user previously selected a Sinhala word for this exact
+             * Singlish spelling (including a cloud/AI suggestion), force that
+             * learned mapping to the front of the LOCAL list.
+             *
+             * Example:
+             *   sankayaawa -> සංක්‍යාව
+             *
+             * After the user chooses it once, the next time it should appear
+             * locally without waiting for Gemini.
+             */
+            val learnedExact = typingMemory.exactSinhalaMapping(typed)
+            val items = if (learnedExact == null) {
+                engineItems
+            } else {
+                buildList {
+                    add(learnedExact)
+                    addAll(
+                        engineItems.filter {
+                            it.commitText != learnedExact.commitText
+                        }
+                    )
+                }.take(8)
+            }
+
             renderSuggestions(items) { pickSinhalaSuggestion(it) }
             fetchSinhalaCloudWordCompletions(typed, items)
         }
@@ -939,28 +969,88 @@ class KeyboardService : InputMethodService() {
         localItems: List<SuggestionCandidate>,
     ) {
         if (language != Language.ENGLISH || !Prefs.isCloudSuggestionsEnabled(this)) return
+
         val apiKey = Prefs.getApiKey(this)
         if (apiKey.isBlank() || partialWord.length < 2) return
 
+        /*
+         * Every new keystroke reaches this method again. Cancel the previous
+         * pending cloud job BEFORE creating another one. This is the main cost
+         * protection: while the user is continuously typing, the 700 ms timer
+         * keeps restarting and no HTTP request is sent.
+         */
+        englishCloudJob?.cancel()
         englishCloudJob = scope.launch {
-            delay(400)
+            delay(ENGLISH_AI_PAUSE_MS)
+
+            if (language != Language.ENGLISH) return@launch
+
             val ic = currentInputConnection ?: return@launch
             if (getCurrentWord(ic) != partialWord) return@launch
-            val cloudResult = cloudSuggestionService.predictWordCompletions(
-                contextText = getContextBeforeCursor(ic),
+
+            val contextSnapshot = getContextBeforeCursor(ic)
+            val sentenceMode = shouldUseEnglishSentenceCompletion(
+                contextText = contextSnapshot,
                 partialWord = partialWord,
-                apiKey = apiKey,
-                tone = englishTone,
             )
-            if (getCurrentWord(currentInputConnection ?: return@launch) != partialWord) return@launch
+
+            /*
+             * ONE cloud request per pause:
+             *
+             * - enough sentence context -> smart phrase/sentence continuation
+             * - short context          -> normal word completion
+             *
+             * We never call both for the same pause.
+             */
+            val cloudResult = if (sentenceMode) {
+                cloudSuggestionService.predictEnglishSentenceCompletions(
+                    contextText = contextSnapshot,
+                    partialWord = partialWord,
+                    apiKey = apiKey,
+                    tone = englishTone,
+                )
+            } else {
+                cloudSuggestionService.predictWordCompletions(
+                    contextText = contextSnapshot,
+                    partialWord = partialWord,
+                    apiKey = apiKey,
+                    tone = englishTone,
+                )
+            }
+
+            val liveIc = currentInputConnection ?: return@launch
+
+            // Ignore an old response if the user typed/moved the cursor meanwhile.
+            if (getCurrentWord(liveIc) != partialWord) return@launch
+            if (getContextBeforeCursor(liveIc) != contextSnapshot) return@launch
+
             cloudResult.onFailure { e ->
                 toastOpenRouterFailure(e)
                 return@launch
             }
-            val cloudWords = cloudResult.getOrNull().orEmpty()
+
+            val cloudWords = cloudResult
+                .getOrNull()
+                .orEmpty()
+                .filter { EnglishSuggestionRanker.isEnglishOnly(it) }
+
             if (cloudWords.isEmpty()) return@launch
-            if (getCurrentWord(currentInputConnection ?: return@launch) != partialWord) return@launch
-            val merged = mergeCloudSuggestions(localItems, cloudWords, partialWord, isNextWord = false)
+
+            val merged = if (sentenceMode) {
+                mergeEnglishPausedSentenceSuggestions(
+                    local = localItems,
+                    cloudItems = cloudWords,
+                    partialWord = partialWord,
+                )
+            } else {
+                mergeCloudSuggestions(
+                    local = localItems,
+                    cloudItems = cloudWords,
+                    prefixHint = partialWord,
+                    isNextWord = false,
+                )
+            }
+
             renderSuggestions(merged) { candidate ->
                 replaceCurrentWord(
                     currentInputConnection ?: return@renderSuggestions,
@@ -971,6 +1061,74 @@ class KeyboardService : InputMethodService() {
                 clearSuggestions()
             }
         }
+    }
+
+    /**
+     * Use sentence/phrase AI only when there is useful context before the
+     * current unfinished word. Short inputs such as "hel" still use normal
+     * AI word completion after the same pause.
+     */
+    private fun shouldUseEnglishSentenceCompletion(
+        contextText: String,
+        partialWord: String,
+    ): Boolean {
+        if (contextText.isBlank() || partialWord.isBlank()) return false
+
+        val beforeCurrentWord = if (contextText.endsWith(partialWord)) {
+            contextText.dropLast(partialWord.length).trimEnd()
+        } else {
+            contextText.substringBeforeLast(partialWord, "").trimEnd()
+        }
+
+        if (beforeCurrentWord.length < 4) return false
+
+        val completedWords = beforeCurrentWord
+            .split(Regex("\\s+"))
+            .count { it.isNotBlank() }
+
+        return completedWords >= 2
+    }
+
+    /**
+     * For paused sentence completion, preserve a few immediate local word
+     * choices and reserve space for Gemini's longer phrase suggestions.
+     */
+    private fun mergeEnglishPausedSentenceSuggestions(
+        local: List<SuggestionCandidate>,
+        cloudItems: List<String>,
+        partialWord: String,
+    ): List<SuggestionCandidate> {
+        val result = mutableListOf<SuggestionCandidate>()
+        val seen = linkedSetOf<String>()
+
+        for (candidate in local.take(5)) {
+            val key = candidate.commitText.trim().lowercase()
+            if (key.isBlank() || !seen.add(key)) continue
+            result.add(candidate)
+        }
+
+        for (raw in cloudItems) {
+            val text = raw.trim()
+            if (text.isBlank()) continue
+            if (!EnglishSuggestionRanker.isEnglishOnly(text)) continue
+
+            val commit = formatCloudSuggestion(text, partialWord)
+            val key = commit.lowercase()
+            if (!seen.add(key)) continue
+
+            result.add(
+                SuggestionCandidate(
+                    display = truncateSuggestionDisplay(commit),
+                    commitText = commit,
+                    isNextWord = false,
+                    isCloud = true,
+                )
+            )
+
+            if (result.size >= 8) break
+        }
+
+        return result.take(8)
     }
 
     private fun updateNextWordSuggestions() {
@@ -1000,7 +1158,8 @@ class KeyboardService : InputMethodService() {
         nextWordJob?.cancel()
         val contextSnapshot = getContextBeforeCursor(ic)
         nextWordJob = scope.launch {
-            delay(350)
+            // English cloud next-word prediction also waits for a real typing pause.
+            delay(if (sinhala) 350L else ENGLISH_AI_PAUSE_MS)
             val liveIc = currentInputConnection ?: return@launch
             if (getLastWord(liveIc) != lastWord || sinhalaBuffer.isNotEmpty()) return@launch
             val cloudResult = if (sinhala) {
