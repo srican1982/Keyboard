@@ -5,14 +5,14 @@ import android.content.Context
 /**
  * Singlish IME engine:
  *
- * 1. Converts Roman/Singlish input to Sinhala.
- * 2. Generates a controlled set of spelling alternatives.
- * 3. Looks up Sinhala corpus completions.
- * 4. Adds personal-history / learned suggestions.
- * 5. Sends the final candidate set to SinhalaSuggestionRanker.
+ * - direct Roman -> Sinhala conversion
+ * - controlled ambiguity generation
+ * - dictionary lookup
+ * - corpus prefix completion
+ * - personal learning
+ * - source-aware ranking
  *
  * Sinhala mode only.
- * English mode must use [EnglishSuggestions].
  */
 class SinglishEngine(
     context: Context,
@@ -20,25 +20,9 @@ class SinglishEngine(
     private val typingMemory: TypingMemory? = null,
 ) {
 
-    /**
-     * Roman key -> Sinhala word.
-     *
-     * Example:
-     *
-     * "kohomada" -> "කොහොමද"
-     */
     private val dictionary: MutableMap<String, String> = mutableMapOf()
-
-    /**
-     * Roman dictionary-key frequency.
-     *
-     * This comes from sinhala_dict.txt.
-     */
     private val frequency: MutableMap<String, Int> = mutableMapOf()
 
-    /**
-     * Large Sinhala word-frequency corpus.
-     */
     private val corpusDb = SinhalaFrequencyDatabase(context)
 
     init {
@@ -50,10 +34,11 @@ class SinglishEngine(
     }
 
     /**
-     * Final transliteration used when a word is committed.
+     * Final transliteration when the user commits the word without choosing
+     * a suggestion.
      *
-     * Prefer an exact dictionary mapping when available.
-     * Otherwise use the rule-based converter.
+     * Exact dictionary mapping wins.
+     * Otherwise fall back to the rule-based converter.
      */
     fun transliterate(input: String): String {
         val word = input.trim()
@@ -72,7 +57,7 @@ class SinglishEngine(
     }
 
     /**
-     * Cheap rule-based conversion used while typing.
+     * Cheap live conversion.
      */
     fun transliterateLive(input: String): String {
         val word = input.trim()
@@ -85,15 +70,7 @@ class SinglishEngine(
     }
 
     /**
-     * Generate Sinhala suggestions for a partially typed Roman/Singlish word.
-     *
-     * Important design:
-     *
-     * - Ambiguity is expanded only ONE level.
-     * - AlternateSinhalaReadings does NOT expand ambiguity again.
-     * - Corpus searches use strong Sinhala prefixes first.
-     * - Very broad dropLast(2) prefix searching is intentionally avoided.
-     * - Loose subsequence fuzzy matching is not used for live prediction.
+     * Sinhala live suggestions.
      */
     fun sinhalaSuggestions(
         prefix: String,
@@ -109,33 +86,41 @@ class SinglishEngine(
         val lower = typed.lowercase()
 
         /*
-         * Roman forms that we will consider.
+         * ============================================================
+         * SOURCE GROUPS
+         * ============================================================
          *
-         * The exact typed form is always first.
+         * We intentionally keep these separate so the ranker knows
+         * where each suggestion came from.
          */
-        val romanVariants = romanSearchVariants(typed)
+
+        val directReadings = linkedSetOf<String>()
+        val dictionaryExactReadings = linkedSetOf<String>()
+        val variantReadings = linkedSetOf<String>()
+        val personalExactReadings = linkedSetOf<String>()
 
         /*
-         * All reasonable Sinhala readings produced from the Roman forms.
-         *
-         * LinkedHashSet preserves insertion order and removes duplicates.
+         * All phonetic/readable candidates for backward compatibility.
          */
         val homophoneReadings = linkedSetOf<String>()
 
         /*
-         * Sinhala prefixes used to search the large frequency corpus.
+         * Sinhala prefixes used for corpus completion.
          */
         val sinhalaPrefixes = linkedSetOf<String>()
 
         /*
-         * Explicitly calculate the exact typed conversion first.
-         *
-         * This ensures the direct reading is always represented even if
-         * future ambiguity code changes.
+         * ============================================================
+         * 1. DIRECT MECHANICAL CONVERSION
+         * ============================================================
          */
-        val directReading = SinglishConverter.convert(typed)
+
+        val directReading =
+            SinglishConverter.convert(typed)
 
         if (containsSinhalaScript(directReading)) {
+
+            directReadings.add(directReading)
             homophoneReadings.add(directReading)
 
             collectSinhalaPrefixes(
@@ -145,17 +130,89 @@ class SinglishEngine(
         }
 
         /*
-         * Convert each Roman spelling into Sinhala readings.
+         * ============================================================
+         * 2. EXACT DICTIONARY MAPPING
+         * ============================================================
          *
-         * IMPORTANT:
-         * romanSearchVariants() already handles ambiguity.
+         * This is stronger than the raw converter because it represents
+         * a known Roman -> Sinhala mapping.
+         */
+
+        dictionary[lower]
+            ?.takeIf {
+                containsSinhalaScript(it)
+            }
+            ?.let { exactDictionaryWord ->
+
+                dictionaryExactReadings.add(
+                    exactDictionaryWord
+                )
+
+                homophoneReadings.add(
+                    exactDictionaryWord
+                )
+
+                collectSinhalaPrefixes(
+                    reading = exactDictionaryWord,
+                    out = sinhalaPrefixes,
+                )
+            }
+
+        /*
+         * ============================================================
+         * 3. EXACT PERSONAL LEARNED MAPPING
+         * ============================================================
          *
-         * AlternateSinhalaReadings must therefore only convert the supplied
-         * Roman form and apply its very small trailing-vowel fallback.
+         * Example:
+         *
+         * user repeatedly chose:
+         *   patiyo -> පැටියෝ
+         *
+         * This should strongly influence ranking.
+         */
+
+        typingMemory
+            ?.exactSinhalaEntry(typed)
+            ?.let { learned ->
+
+                val word =
+                    learned.value
+
+                if (containsSinhalaScript(word)) {
+
+                    personalExactReadings.add(word)
+                    homophoneReadings.add(word)
+
+                    collectSinhalaPrefixes(
+                        reading = word,
+                        out = sinhalaPrefixes,
+                    )
+                }
+            }
+
+        /*
+         * ============================================================
+         * 4. CONTROLLED ROMAN AMBIGUITY
+         * ============================================================
+         *
+         * Only ONE ambiguity expansion.
+         */
+
+        val romanVariants =
+            romanSearchVariants(typed)
+
+        /*
+         * Skip the exact typed form here because it was already handled
+         * separately as the direct reading.
          */
         for (roman in romanVariants) {
 
-            val readings = AlternateSinhalaReadings.forRoman(roman)
+            if (roman.equals(typed, ignoreCase = false)) {
+                continue
+            }
+
+            val readings =
+                AlternateSinhalaReadings.forRoman(roman)
 
             for (reading in readings) {
 
@@ -163,6 +220,7 @@ class SinglishEngine(
                     continue
                 }
 
+                variantReadings.add(reading)
                 homophoneReadings.add(reading)
 
                 collectSinhalaPrefixes(
@@ -173,21 +231,20 @@ class SinglishEngine(
         }
 
         /*
-         * Sinhala word -> corpus frequency.
+         * ============================================================
+         * 5. CORPUS PREFIX COMPLETIONS
+         * ============================================================
          */
-        val corpusFrequencies = LinkedHashMap<String, Int>()
 
-        /*
-         * Find words beginning with our generated Sinhala prefixes.
-         *
-         * We intentionally use smaller result sets than before because
-         * relevance is more valuable than generating huge candidate pools.
-         */
-        val prefixEntries = corpusDb.queryMergedByPrefixes(
-            prefixes = sinhalaPrefixes,
-            limitPerPrefix = 18,
-            totalLimit = 72,
-        )
+        val corpusFrequencies =
+            LinkedHashMap<String, Int>()
+
+        val prefixEntries =
+            corpusDb.queryMergedByPrefixes(
+                prefixes = sinhalaPrefixes,
+                limitPerPrefix = 18,
+                totalLimit = 72,
+            )
 
         for (entry in prefixEntries) {
 
@@ -195,185 +252,207 @@ class SinglishEngine(
                 continue
             }
 
-            corpusFrequencies[entry.word] = maxOf(
-                corpusFrequencies[entry.word] ?: 0,
-                entry.frequency,
-            )
+            corpusFrequencies[entry.word] =
+                maxOf(
+                    corpusFrequencies[entry.word] ?: 0,
+                    entry.frequency,
+                )
         }
 
         /*
-         * Exact Sinhala readings may not appear in the prefix result if the
-         * prefix query limit was reached by more frequent words.
-         *
-         * Always look up their exact frequencies separately.
+         * Exact source readings may get pushed out of a prefix query by
+         * higher-frequency completions, so explicitly look them up.
          */
-        val exactReadingFrequencies =
-            corpusDb.lookupFrequencies(homophoneReadings)
 
-        for ((word, freq) in exactReadingFrequencies) {
+        val sourceReadings =
+            linkedSetOf<String>()
+
+        sourceReadings.addAll(directReadings)
+        sourceReadings.addAll(dictionaryExactReadings)
+        sourceReadings.addAll(variantReadings)
+        sourceReadings.addAll(personalExactReadings)
+
+        val exactFrequencies =
+            corpusDb.lookupFrequencies(
+                sourceReadings
+            )
+
+        for ((word, freq) in exactFrequencies) {
 
             if (!containsSinhalaScript(word)) {
                 continue
             }
 
-            corpusFrequencies[word] = maxOf(
-                corpusFrequencies[word] ?: 0,
-                freq,
-            )
+            corpusFrequencies[word] =
+                maxOf(
+                    corpusFrequencies[word] ?: 0,
+                    freq,
+                )
         }
 
         /*
-         * Add sinhala_dict.txt prefix matches.
+         * ============================================================
+         * 6. ROMAN DICTIONARY PREFIX COMPLETIONS
+         * ============================================================
          *
-         * IMPORTANT:
-         * Live suggestion mode now uses true startsWith() matching only.
+         * Only startsWith.
          *
-         * The previous fuzzy subsequence matcher could match unrelated words.
+         * No old subsequence fuzzy matcher.
          */
+
         addDictionaryCorpusMatches(
             lower = lower,
             corpusFrequencies = corpusFrequencies,
         )
 
         /*
-         * Complete candidate pool.
+         * ============================================================
+         * 7. GENERIC PERSONAL PREFIX MEMORY
+         * ============================================================
          */
-        val candidateWords = linkedSetOf<String>()
+
+        val memorySuggestions =
+            typingMemory
+                ?.sinhalaSuggestions(
+                    prefix = typed,
+                    limit = 8,
+                )
+                .orEmpty()
 
         /*
-         * Exact/direct readings are intentionally inserted first.
+         * Candidate pool for PersonalHistory lookup.
          */
-        candidateWords.addAll(homophoneReadings)
+        val candidateWords =
+            linkedSetOf<String>()
 
-        /*
-         * Then corpus completions.
-         */
+        candidateWords.addAll(dictionaryExactReadings)
+        candidateWords.addAll(personalExactReadings)
+        candidateWords.addAll(directReadings)
+        candidateWords.addAll(variantReadings)
         candidateWords.addAll(corpusFrequencies.keys)
 
-        /*
-         * Add words previously learned for this Roman prefix.
-         */
-        typingMemory
-            ?.sinhalaSuggestions(
-                prefix = typed,
-                limit = 8,
-            )
-            ?.forEach { candidate ->
+        for (candidate in memorySuggestions) {
 
-                val word = candidate.commitText
+            val word =
+                candidate.commitText
 
-                if (containsSinhalaScript(word)) {
-                    candidateWords.add(word)
-                }
+            if (containsSinhalaScript(word)) {
+                candidateWords.add(word)
             }
+        }
 
         /*
-         * Retrieve personal usage counts only for words that are actually
-         * candidates for this request.
+         * ============================================================
+         * 8. PERSONAL WORD FREQUENCY
+         * ============================================================
          */
-        val personalCounts = personalHistory
-            ?.getCounts(
-                words = candidateWords,
-                langMode = PersonalHistoryDatabase.MODE_SINHALA,
+
+        val personalCounts =
+            personalHistory
+                ?.getCounts(
+                    words = candidateWords,
+                    langMode =
+                        PersonalHistoryDatabase.MODE_SINHALA,
+                )
+                .orEmpty()
+
+        /*
+         * ============================================================
+         * 9. FINAL SOURCE-AWARE RANKING
+         * ============================================================
+         */
+
+        val ranked =
+            SinhalaSuggestionRanker.rank(
+
+                typedRomanLength =
+                    typed.length,
+
+                corpusFrequencies =
+                    corpusFrequencies,
+
+                personalCounts =
+                    personalCounts,
+
+                homophoneReadings =
+                    homophoneReadings,
+
+                limit =
+                    limit,
+
+                directReadings =
+                    directReadings,
+
+                dictionaryExactReadings =
+                    dictionaryExactReadings,
+
+                variantReadings =
+                    variantReadings,
+
+                personalExactReadings =
+                    personalExactReadings,
             )
-            .orEmpty()
 
         /*
-         * Final ranking.
-         *
-         * We will improve SinhalaSuggestionRanker in the NEXT step.
+         * ============================================================
+         * 10. UI SUGGESTION OBJECTS
+         * ============================================================
          */
-        val ranked = SinhalaSuggestionRanker.rank(
-            typedRomanLength = typed.length,
-            corpusFrequencies = corpusFrequencies,
-            personalCounts = personalCounts,
-            homophoneReadings = homophoneReadings.filter {
-                containsSinhalaScript(it)
-            },
-            limit = limit,
-        )
 
-        /*
-         * Convert ranked Sinhala strings into UI candidates.
-         */
         return ranked.map { word ->
 
-            val personal =
-                (personalCounts[word] ?: 0) > 0
+            val isPersonalWord =
+                (personalCounts[word] ?: 0) > 0 ||
+                    word in personalExactReadings
 
             SuggestionCandidate(
                 display = word,
                 commitText = word,
-                isPersonal = personal,
+                isPersonal = isPersonalWord,
             )
         }
     }
 
     /**
-     * Generate a controlled ONE-LEVEL set of Roman spelling alternatives.
-     *
-     * OLD behavior:
-     *
-     * typed
-     *   -> variants
-     *   -> variants of variants
-     *
-     * That generated too many weak spellings.
-     *
-     * NEW behavior:
-     *
-     * typed
-     *   -> direct ambiguity variants only
+     * ONE-LEVEL Roman ambiguity only.
      */
     private fun romanSearchVariants(
         roman: String,
     ): Set<String> {
 
-        val variants = linkedSetOf<String>()
+        val variants =
+            linkedSetOf<String>()
 
-        /*
-         * Always keep the exact user spelling first.
-         */
         variants.add(roman)
 
-        /*
-         * One ambiguity expansion only.
-         */
         variants.addAll(
-            SinglishAmbiguityVariants.liveVariants(roman)
+            SinglishAmbiguityVariants
+                .liveVariants(roman)
         )
 
         return variants
     }
 
     /**
-     * Add useful Sinhala corpus prefixes.
+     * Strong Sinhala corpus prefixes.
      *
-     * We always search the full generated reading.
+     * Full reading always.
      *
-     * For sufficiently long readings we also remove ONE final Unicode
-     * character to support live partial-word completion.
-     *
-     * We intentionally DO NOT use dropLast(2), because it produced overly
-     * broad searches and pulled in unrelated high-frequency words.
+     * One-character relaxation only for longer words.
      */
     private fun collectSinhalaPrefixes(
         reading: String,
         out: MutableSet<String>,
     ) {
+
         if (reading.isBlank()) {
             return
         }
 
-        /*
-         * Strongest prefix.
-         */
         out.add(reading)
 
-        /*
-         * Slightly relaxed prefix only for longer readings.
-         */
         if (reading.length >= 5) {
+
             out.add(
                 reading.dropLast(1)
             )
@@ -381,25 +460,15 @@ class SinglishEngine(
     }
 
     /**
-     * Add suggestions from sinhala_dict.txt.
+     * Dictionary prefix completions.
      *
-     * Only true Roman-prefix matching is allowed during live typing.
-     *
-     * Example:
-     *
-     * typed = "pati"
-     *
-     * accepts:
-     *   patiya
-     *   patiyo
-     *
-     * does not accept unrelated dictionary keys merely because p,a,t,i
-     * appear somewhere in the same order.
+     * Live prediction uses startsWith only.
      */
     private fun addDictionaryCorpusMatches(
         lower: String,
         corpusFrequencies: MutableMap<String, Int>,
     ) {
+
         if (lower.isBlank()) {
             return
         }
@@ -407,6 +476,7 @@ class SinglishEngine(
         dictionary.entries
             .asSequence()
             .filter { (romanKey, _) ->
+
                 romanKey.startsWith(lower)
             }
             .forEach { (romanKey, sinhala) ->
@@ -418,38 +488,37 @@ class SinglishEngine(
                 val dictionaryWeight =
                     frequency[romanKey] ?: 1
 
-                /*
-                 * Prefer the true corpus frequency when available.
-                 *
-                 * Fall back to the dictionary's own weight otherwise.
-                 */
-                val corpusFrequency =
-                    corpusDb.lookupFrequency(sinhala)
+                val realCorpusFrequency =
+                    corpusDb.lookupFrequency(
+                        sinhala
+                    )
 
                 val weight =
-                    if (corpusFrequency > 0) {
-                        corpusFrequency
+                    if (realCorpusFrequency > 0) {
+                        realCorpusFrequency
                     } else {
                         dictionaryWeight
                     }
 
-                corpusFrequencies[sinhala] = maxOf(
-                    corpusFrequencies[sinhala] ?: 0,
-                    weight,
-                )
+                corpusFrequencies[sinhala] =
+                    maxOf(
+                        corpusFrequencies[sinhala] ?: 0,
+                        weight,
+                    )
             }
     }
 
     /**
-     * Load Roman -> Sinhala entries from assets/sinhala_dict.txt.
+     * Load assets/sinhala_dict.txt
      *
-     * Expected format:
+     * Expected:
      *
      * roman|sinhala|frequency
      */
     private fun loadDictionary(
         context: Context,
     ) {
+
         try {
 
             context.assets
@@ -459,7 +528,8 @@ class SinglishEngine(
 
                     lines.forEach { line ->
 
-                        val trimmed = line.trim()
+                        val trimmed =
+                            line.trim()
 
                         if (
                             trimmed.isEmpty() ||
@@ -484,7 +554,8 @@ class SinglishEngine(
                                 .lowercase()
 
                         val value =
-                            parts[1].trim()
+                            parts[1]
+                                .trim()
 
                         val freq =
                             parts
@@ -497,8 +568,12 @@ class SinglishEngine(
                             key.isNotBlank() &&
                             value.isNotBlank()
                         ) {
-                            dictionary[key] = value
-                            frequency[key] = freq
+
+                            dictionary[key] =
+                                value
+
+                            frequency[key] =
+                                freq
                         }
                     }
                 }
@@ -506,13 +581,9 @@ class SinglishEngine(
         } catch (_: Exception) {
 
             /*
-             * sinhala_dict.txt is an enhancement.
+             * Dictionary is optional enhancement.
              *
-             * The keyboard can still work using:
-             *
-             * SinglishConverter
-             * +
-             * SinhalaFrequencyDatabase.
+             * SinglishConverter + corpus can still function.
              */
         }
     }
@@ -522,7 +593,9 @@ class SinglishEngine(
     ): Boolean {
 
         return text.any { char ->
-            char.code in 0x0D80..0x0DFF
+
+            char.code in
+                0x0D80..0x0DFF
         }
     }
 }
