@@ -496,28 +496,28 @@ class KeyboardService : InputMethodService() {
 
     private fun showEmojiLayout() {
         hapticKey()
-        if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
+        keepTypedSinglishWithoutConverting()
         keyLayout = KeyLayout.EMOJI
         applyKeyLayout()
     }
 
     private fun showLettersLayout() {
         hapticKey()
-        if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
+        keepTypedSinglishWithoutConverting()
         keyLayout = KeyLayout.LETTERS
         applyKeyLayout()
     }
 
     private fun showNumbersLayout() {
         hapticKey()
-        if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
+        keepTypedSinglishWithoutConverting()
         keyLayout = KeyLayout.NUMBERS
         applyKeyLayout()
     }
 
     private fun showSymbolsLayout() {
         hapticKey()
-        if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
+        keepTypedSinglishWithoutConverting()
         keyLayout = KeyLayout.SYMBOLS
         applyKeyLayout()
     }
@@ -653,8 +653,11 @@ class KeyboardService : InputMethodService() {
         hapticKey()
         beginTypingCompactMode()
         val ic = currentInputConnection ?: return
-        if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
-            commitSinhalaWord()
+        if (language == Language.SINHALA) {
+            adoptCurrentRomanWordIntoBuffer()
+            if (sinhalaBuffer.isNotEmpty()) {
+                commitSinhalaWord()
+            }
         } else if (language == Language.ENGLISH) {
             val word = getCurrentWord(ic)
             if (word.isNotEmpty()) rememberWordCommitted(word)
@@ -666,8 +669,11 @@ class KeyboardService : InputMethodService() {
     private fun onEnter() {
         hapticKey()
         val ic = currentInputConnection ?: return
-        if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
-            commitSinhalaWord()
+        if (language == Language.SINHALA) {
+            adoptCurrentRomanWordIntoBuffer()
+            if (sinhalaBuffer.isNotEmpty()) {
+                commitSinhalaWord()
+            }
         }
         flushEmojiUsageToRecent()
         performEnterAction(ic)
@@ -725,12 +731,28 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun deleteOneCharacter() {
+        if (deleteSelectionIfAny()) return
         if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
             sinhalaBuffer.deleteCharAt(sinhalaBuffer.length - 1)
             updateComposingText()
             return
         }
         deleteTextBeforeCursor()
+    }
+
+    /** Delete highlighted text so backspace works on a selection, not only one character. */
+    private fun deleteSelectionIfAny(): Boolean {
+        val ic = currentInputConnection ?: return false
+        val selected = ic.getSelectedText(0)
+        val hasSelectedText = !selected.isNullOrEmpty()
+        val extracted = if (!hasSelectedText) ic.getExtractedText(ExtractedTextRequest(), 0) else null
+        val hasExtractedSelection = extracted != null && extracted.selectionStart != extracted.selectionEnd
+        if (!hasSelectedText && !hasExtractedSelection) return false
+
+        sinhalaBuffer.clear()
+        ic.commitText("", 1)
+        clearComposingText()
+        return true
     }
 
     /** Delete the full grapheme before the cursor (emoji, Sinhala, combining marks). */
@@ -784,6 +806,47 @@ class KeyboardService : InputMethodService() {
         if (trailingSpace) updateNextWordSuggestions()
     }
 
+    /** Leave uncommitted Singlish as typed Roman. Convert only on space or a chip tap. */
+    private fun keepTypedSinglishWithoutConverting() {
+        if (sinhalaBuffer.isEmpty()) return
+        val typed = sinhalaBuffer.toString()
+        val ic = currentInputConnection
+        if (ic != null) {
+            ic.beginBatchEdit()
+            ic.setComposingText(typed, typed.length)
+            ic.finishComposingText()
+            ic.endBatchEdit()
+        }
+        sinhalaBuffer.clear()
+    }
+
+    /**
+     * If the current token started in English (e.g. "koho") and Sinhala mode
+     * continued it ("mada"), treat the whole token as Singlish before convert.
+     */
+    private fun adoptCurrentRomanWordIntoBuffer() {
+        val ic = currentInputConnection ?: return
+        val before = ic.getTextBeforeCursor(200, 0)?.toString().orEmpty()
+        val fieldWord = before.takeLastWhile { !it.isWhitespace() && it != '\n' }
+        if (!isRomanTypingToken(fieldWord)) return
+
+        val buffered = sinhalaBuffer.toString()
+        if (fieldWord.equals(buffered, ignoreCase = true)) return
+
+        ic.beginBatchEdit()
+        ic.deleteSurroundingText(fieldWord.length, 0)
+        sinhalaBuffer.clear()
+        sinhalaBuffer.append(fieldWord)
+        ic.setComposingText(fieldWord, fieldWord.length)
+        ic.endBatchEdit()
+    }
+
+    private fun isRomanTypingToken(word: String): Boolean {
+        if (word.isBlank()) return false
+        if (word.any { it.code in 0x0D80..0x0DFF }) return false
+        return word.any { it.isLetter() }
+    }
+
     private fun rememberWordCommitted(word: String, roman: String? = null) {
         val cleaned = word.trim()
         if (cleaned.isEmpty()) return
@@ -814,9 +877,7 @@ class KeyboardService : InputMethodService() {
     private fun commitDirect(text: String) {
         hapticKey()
         beginTypingCompactMode()
-        if (language == Language.SINHALA && sinhalaBuffer.isNotEmpty()) {
-            commitSinhalaWord()
-        }
+        keepTypedSinglishWithoutConverting()
         currentInputConnection?.commitText(text, 1)
     }
 
@@ -866,7 +927,7 @@ class KeyboardService : InputMethodService() {
              * locally without waiting for Gemini.
              */
             val learnedExact = typingMemory.exactSinhalaMapping(typed)
-            val items = if (learnedExact == null) {
+            val sinhalaItems = if (learnedExact == null) {
                 engineItems
             } else {
                 buildList {
@@ -876,8 +937,9 @@ class KeyboardService : InputMethodService() {
                             it.commitText != learnedExact.commitText
                         }
                     )
-                }.take(8)
+                }.take(7)
             }
+            val items = withTypedSinglishChip(typed, sinhalaItems)
 
             renderSuggestions(items) { pickSinhalaSuggestion(it) }
             fetchSinhalaCloudWordCompletions(typed, items)
@@ -930,8 +992,46 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun pickSinhalaSuggestion(candidate: SuggestionCandidate) {
+        if (candidate.isSinglishRoman) {
+            commitLiteralSinglish(candidate.commitText)
+            clearSuggestions()
+            return
+        }
+        adoptCurrentRomanWordIntoBuffer()
         commitSinhalaWord(candidate.commitText, trailingSpace = true)
         clearSuggestions()
+    }
+
+    private fun commitLiteralSinglish(typed: String) {
+        val ic = currentInputConnection ?: return
+        val text = typed.ifBlank { sinhalaBuffer.toString() }
+        if (text.isEmpty()) return
+        ic.beginBatchEdit()
+        ic.setComposingText(text, text.length)
+        ic.finishComposingText()
+        ic.commitText(" ", 1)
+        ic.endBatchEdit()
+        sinhalaBuffer.clear()
+    }
+
+    private fun withTypedSinglishChip(
+        typed: String,
+        items: List<SuggestionCandidate>,
+    ): List<SuggestionCandidate> {
+        if (typed.isBlank()) return items
+        val exact = SuggestionCandidate(
+            display = typed,
+            commitText = typed,
+            isRoman = true,
+            isSinglishRoman = true,
+        )
+        return buildList {
+            val sinhalaItems = items.filter { !it.commitText.equals(typed, ignoreCase = true) }
+            val firstSinhala = sinhalaItems.firstOrNull()
+            if (firstSinhala != null) add(firstSinhala)
+            add(exact)
+            addAll(sinhalaItems.drop(if (firstSinhala == null) 0 else 1))
+        }.take(8)
     }
 
     private fun updateEnglishSuggestions() {
@@ -1259,7 +1359,7 @@ class KeyboardService : InputMethodService() {
             for (candidate in local) {
                 val word = candidate.commitText.trim()
                 if (word.isBlank()) continue
-                if (!containsSinhalaScript(word)) continue
+                if (!candidate.isSinglishRoman && !containsSinhalaScript(word)) continue
                 if (!seen.add(word)) continue
 
                 result.add(candidate)
@@ -1383,7 +1483,8 @@ class KeyboardService : InputMethodService() {
         return items.filter { candidate ->
             val text = candidate.commitText.trim()
             when (language) {
-                Language.SINHALA -> containsSinhalaScript(text)
+                Language.SINHALA ->
+                    containsSinhalaScript(text) || candidate.isSinglishRoman
                 Language.ENGLISH -> EnglishSuggestionRanker.isEnglishCloudSuggestion(text)
             }
         }
@@ -1717,10 +1818,23 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun toggleLanguage() {
-        if (sinhalaBuffer.isNotEmpty()) commitSinhalaWord()
-        language = if (language == Language.SINHALA) Language.ENGLISH else Language.SINHALA
+        if (language == Language.SINHALA) {
+            keepTypedSinglishWithoutConverting()
+            language = Language.ENGLISH
+            clearSuggestions(expandToolbar = true)
+            updateLanguageUi()
+            scheduleEnglishSuggestions()
+            return
+        }
+
+        language = Language.SINHALA
+        adoptCurrentRomanWordIntoBuffer()
         clearSuggestions(expandToolbar = true)
         updateLanguageUi()
+        if (sinhalaBuffer.isNotEmpty()) {
+            updateComposingText()
+            scheduleSinhalaSuggestions()
+        }
     }
 
     private fun updateLanguageUi() {
