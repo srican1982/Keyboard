@@ -53,6 +53,14 @@
                 android:visibility="gone" />
 
             <TextView
+                android:id="@+id/btnPrompt"
+                style="@style/ToolbarButton"
+                android:background="@drawable/toolbar_btn_prompt"
+                android:text="@string/key_prompt"
+                android:textColor="#FFFFFF"
+                android:visibility="gone" />
+
+            <TextView
                 android:id="@+id/btnTonePro"
                 style="@style/ToolbarButton"
                 android:background="@drawable/toolbar_btn_tone_on"

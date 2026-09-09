@@ -40,6 +40,7 @@ class KeyboardService : InputMethodService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val grammarFixer = GrammarFixer()
+    private val promptEnhancer = PromptEnhancer()
     private val singlishTranslator = SinglishTranslator()
     private val cloudSuggestionService = CloudSuggestionService()
     private val repeatHandler = Handler(Looper.getMainLooper())
@@ -62,6 +63,7 @@ class KeyboardService : InputMethodService() {
     private var keyLangBottom: TextView? = null
     private var btnMic: ImageView? = null
     private var btnFix: TextView? = null
+    private var btnPrompt: TextView? = null
     private var btnToEnglish: TextView? = null
     private var btnTonePro: TextView? = null
     private var btnToneFriendly: TextView? = null
@@ -85,6 +87,7 @@ class KeyboardService : InputMethodService() {
     private var enterIsSearch = false
     private var currentEditorInfo: EditorInfo? = null
     private var fixJob: Job? = null
+    private var promptJob: Job? = null
     private var translateJob: Job? = null
     private var nextWordJob: Job? = null
     private var englishCloudJob: Job? = null
@@ -164,6 +167,7 @@ class KeyboardService : InputMethodService() {
         keyLangBottom = view.findViewById(R.id.keyLangBottom)
         btnMic = view.findViewById(R.id.btnMic)
         btnFix = view.findViewById(R.id.btnFix)
+        btnPrompt = view.findViewById(R.id.btnPrompt)
         btnToEnglish = view.findViewById(R.id.btnToEnglish)
         btnTonePro = view.findViewById(R.id.btnTonePro)
         btnToneFriendly = view.findViewById(R.id.btnToneFriendly)
@@ -211,6 +215,7 @@ class KeyboardService : InputMethodService() {
         keyLangBottom?.let { setupInstantKey(it) { toggleLanguage() } }
         btnMic?.let { setupInstantKey(it) { toggleVoiceInput() } }
         btnFix?.let { setupInstantKey(it) { fixGrammar() } }
+        btnPrompt?.let { setupInstantKey(it) { enhancePrompt() } }
         btnToEnglish?.let { setupInstantKey(it) { translateSinglishToEnglish() } }
         btnToolbarExpand?.let {
             setupInstantKey(it) {
@@ -279,6 +284,10 @@ class KeyboardService : InputMethodService() {
         applyCommaKeyTheme(view, keyBg)
         btnFix?.apply {
             setBackgroundResource(btnFixBg)
+            setTextColor(0xFFFFFFFF.toInt())
+        }
+        btnPrompt?.apply {
+            setBackgroundResource(R.drawable.toolbar_btn_prompt)
             setTextColor(0xFFFFFFFF.toInt())
         }
         btnToEnglish?.apply {
@@ -796,16 +805,9 @@ class KeyboardService : InputMethodService() {
     }
 
     private fun rememberVoiceWords(text: String) {
-        val sinhala = language == Language.SINHALA
         val tokens = text.split(Regex("\\s+")).filter { it.isNotBlank() }
         for (token in tokens) {
-            if (!sinhala) {
-                typingMemory.rememberEnglish(token)
-            }
-            lastCommittedWord?.let { prev ->
-                typingMemory.rememberBigram(prev, token, sinhala)
-            }
-            lastCommittedWord = token
+            rememberWordCommitted(token)
         }
     }
 
@@ -1744,6 +1746,7 @@ class KeyboardService : InputMethodService() {
             alpha = 1f
         }
         btnFix?.visibility = if (language == Language.ENGLISH) View.VISIBLE else View.GONE
+        btnPrompt?.visibility = if (language == Language.ENGLISH) View.VISIBLE else View.GONE
         btnToEnglish?.visibility = if (language == Language.ENGLISH) View.VISIBLE else View.GONE
         val showTone = language == Language.ENGLISH
         btnTonePro?.visibility = if (showTone) View.VISIBLE else View.GONE
@@ -1779,6 +1782,41 @@ class KeyboardService : InputMethodService() {
 
             result.onSuccess { corrected ->
                 replaceFieldText(ic, corrected)
+            }.onFailure { e ->
+                toastOpenRouterFailure(e)
+            }
+        }
+    }
+
+    private fun enhancePrompt() {
+        if (language != Language.ENGLISH) return
+        val ic = currentInputConnection ?: return
+        val apiKey = Prefs.getApiKey(this)
+        if (apiKey.isBlank()) {
+            Toast.makeText(this, R.string.api_key_missing, Toast.LENGTH_LONG).show()
+            return
+        }
+
+        promptJob?.cancel()
+        promptJob = scope.launch {
+            progress?.visibility = View.VISIBLE
+            btnPrompt?.isEnabled = false
+
+            val text = withContext(Dispatchers.Main) { getFieldText(ic) }
+            if (text.isBlank()) {
+                progress?.visibility = View.GONE
+                btnPrompt?.isEnabled = true
+                return@launch
+            }
+
+            Toast.makeText(this@KeyboardService, R.string.enhancing_prompt, Toast.LENGTH_SHORT).show()
+
+            val result = promptEnhancer.enhancePrompt(text, apiKey)
+            progress?.visibility = View.GONE
+            btnPrompt?.isEnabled = true
+
+            result.onSuccess { enhanced ->
+                replaceFieldText(ic, enhanced)
             }.onFailure { e ->
                 toastOpenRouterFailure(e)
             }

@@ -13,6 +13,8 @@
     <string name="mode_sinhala_key">අ</string>
     <string name="mode_english">EN</string>
     <string name="key_fix">Fix</string>
+    <string name="key_prompt">Prompt</string>
+    <string name="enhancing_prompt">Expanding into a detailed prompt…</string>
     <string name="show_toolbar">Show keyboard tools</string>
     <string name="key_emoji">Emoji</string>
     <string name="key_abc">ABC</string>
