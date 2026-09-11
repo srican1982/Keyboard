@@ -137,7 +137,7 @@ class KeyboardService : InputMethodService() {
 
     private val themedKeyIds = letterKeyIds + listOf(
         R.id.keyShift, R.id.keyBackspace, R.id.keyNumbers,
-        R.id.keySpace, R.id.keyPeriod, R.id.keyBackspaceBottom,
+        R.id.keySpace, R.id.keyBackspaceBottom,
     )
 
     override fun onCreate() {
@@ -282,6 +282,7 @@ class KeyboardService : InputMethodService() {
             setColorFilter(0xFFFFFFFF.toInt())
         }
         applyCommaKeyTheme(view, keyBg)
+        applyPeriodKeyTheme(view, keyBg)
         btnFix?.apply {
             setBackgroundResource(btnFixBg)
             setTextColor(0xFFFFFFFF.toInt())
@@ -301,10 +302,10 @@ class KeyboardService : InputMethodService() {
         }
     }
 
-    private fun applyCommaKeyTheme(view: View, keyBg: Int) {
-        view.findViewById<View>(R.id.keyComma).setBackgroundResource(keyBg)
-        view.findViewById<TextView>(R.id.keyCommaEmoji).setTextColor(keyTextColor)
-        view.findViewById<TextView>(R.id.keyCommaSymbol).setTextColor(keyTextColor)
+    private fun applyPeriodKeyTheme(view: View, keyBg: Int) {
+        view.findViewById<View>(R.id.keyPeriod).setBackgroundResource(keyBg)
+        view.findViewById<TextView>(R.id.keyPeriodAt).setTextColor(keyMutedColor)
+        view.findViewById<TextView>(R.id.keyPeriodSymbol).setTextColor(keyTextColor)
     }
 
     private fun applyKeyLayout() {
@@ -412,9 +413,17 @@ class KeyboardService : InputMethodService() {
             textSize = 16f
         }
         setupEmojiCommaKey(view.findViewById(R.id.keyComma))
-        view.findViewById<TextView>(R.id.keyPeriod).apply {
+        view.findViewById<View>(R.id.keyPeriodAt).visibility = View.VISIBLE
+        view.findViewById<TextView>(R.id.keyPeriodSymbol).apply {
+            visibility = View.VISIBLE
             text = "."
-            setupInstantKey(this) { commitDirect(".") }
+            textSize = 18f
+        }
+        setupAtPeriodKey(view.findViewById(R.id.keyPeriod))
+        view.findViewById<View>(R.id.keyA).apply {
+            val lp = layoutParams as LinearLayout.LayoutParams
+            lp.weight = 1.28f
+            layoutParams = lp
         }
     }
 
@@ -437,10 +446,7 @@ class KeyboardService : InputMethodService() {
         }
         clearKeyTouchListener(view.findViewById(R.id.keyComma))
         setupInstantKey(view.findViewById(R.id.keyComma)) { commitDirect(",") }
-        view.findViewById<TextView>(R.id.keyPeriod).apply {
-            text = "."
-            setupInstantKey(this) { commitDirect(".") }
-        }
+        bindPeriodAsDotOnly(view)
     }
 
     private fun bindSymbolsLayout(view: View) {
@@ -462,9 +468,22 @@ class KeyboardService : InputMethodService() {
         }
         clearKeyTouchListener(view.findViewById(R.id.keyComma))
         setupInstantKey(view.findViewById(R.id.keyComma)) { commitDirect(",") }
-        view.findViewById<TextView>(R.id.keyPeriod).apply {
+        bindPeriodAsDotOnly(view)
+    }
+
+    private fun bindPeriodAsDotOnly(view: View) {
+        view.findViewById<View>(R.id.keyPeriodAt).visibility = View.GONE
+        view.findViewById<TextView>(R.id.keyPeriodSymbol).apply {
+            visibility = View.VISIBLE
             text = "."
-            setupInstantKey(this) { commitDirect(".") }
+            textSize = 18f
+        }
+        clearKeyTouchListener(view.findViewById(R.id.keyPeriod))
+        setupInstantKey(view.findViewById(R.id.keyPeriod)) { commitDirect(".") }
+        view.findViewById<View>(R.id.keyA).apply {
+            val lp = layoutParams as LinearLayout.LayoutParams
+            lp.weight = 1f
+            layoutParams = lp
         }
     }
 
@@ -568,6 +587,37 @@ class KeyboardService : InputMethodService() {
     private fun clearKeyTouchListener(view: View) {
         view.setOnTouchListener(null)
         view.isClickable = true
+    }
+
+    private fun setupAtPeriodKey(view: View) {
+        view.setOnClickListener(null)
+        var longPressTriggered = false
+        val longPressRunnable = Runnable {
+            longPressTriggered = true
+            hapticKey()
+            commitDirect("@")
+        }
+        view.setOnTouchListener { v, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    longPressTriggered = false
+                    v.postDelayed(longPressRunnable, 400L)
+                    true
+                }
+                MotionEvent.ACTION_UP -> {
+                    v.removeCallbacks(longPressRunnable)
+                    if (!longPressTriggered) {
+                        commitDirect(".")
+                    }
+                    true
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    v.removeCallbacks(longPressRunnable)
+                    true
+                }
+                else -> false
+            }
+        }
     }
 
     private fun setupEmojiCommaKey(view: View) {

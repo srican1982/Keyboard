@@ -4,7 +4,7 @@ package com.personal.sinhalakeyboard
 object EmojiData {
 
     val quickPickDefaults: List<String> = listOf(
-        "😊", "😂", "❤️", "👍", "🙏", "😍", "🔥", "✨", "😭", "🥰", "👏", "💯",
+        "😊", "😂", "❤️", "👍", "🙏", "😍", "😘", "😲", "🔥", "✨", "😭", "🥰", "👏", "💯",
     )
 
     data class Category(val icon: String, val name: String, val emojis: List<String>)
