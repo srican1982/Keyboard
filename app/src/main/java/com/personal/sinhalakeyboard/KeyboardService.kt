@@ -302,6 +302,12 @@ class KeyboardService : InputMethodService() {
         }
     }
 
+    private fun applyCommaKeyTheme(view: View, keyBg: Int) {
+        view.findViewById<View>(R.id.keyComma).setBackgroundResource(keyBg)
+        view.findViewById<TextView>(R.id.keyCommaEmoji).setTextColor(keyTextColor)
+        view.findViewById<TextView>(R.id.keyCommaSymbol).setTextColor(keyTextColor)
+    }
+
     private fun applyPeriodKeyTheme(view: View, keyBg: Int) {
         view.findViewById<View>(R.id.keyPeriod).setBackgroundResource(keyBg)
         view.findViewById<TextView>(R.id.keyPeriodAt).setTextColor(keyMutedColor)
