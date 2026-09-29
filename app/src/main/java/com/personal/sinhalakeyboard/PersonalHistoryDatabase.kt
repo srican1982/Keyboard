@@ -19,14 +19,14 @@ class PersonalHistoryDatabase(context: Context) : SQLiteOpenHelper(
     private val appContext = context.applicationContext
 
     init {
-        writableDatabase.close()
+        writableDatabase // SQLiteOpenHelper owns this shared connection.
         migrateFromLegacyTsvOnce()
     }
 
     fun increment(word: String, langMode: String) {
         val cleaned = word.trim()
         if (cleaned.isEmpty() || langMode.isBlank()) return
-        writableDatabase.use { db ->
+        writableDatabase.let { db ->
             db.execSQL(
                 """
                 INSERT INTO personal_history (word, lang_mode, count)
@@ -41,7 +41,7 @@ class PersonalHistoryDatabase(context: Context) : SQLiteOpenHelper(
     fun getCount(word: String, langMode: String): Int {
         val cleaned = word.trim()
         if (cleaned.isEmpty()) return 0
-        return readableDatabase.use { db ->
+        return readableDatabase.let { db ->
             db.rawQuery(
                 "SELECT count FROM personal_history WHERE word = ? AND lang_mode = ? LIMIT 1",
                 arrayOf(cleaned, langMode),
@@ -57,7 +57,7 @@ class PersonalHistoryDatabase(context: Context) : SQLiteOpenHelper(
         if (unique.isEmpty()) return emptyMap()
 
         val out = HashMap<String, Int>(unique.size)
-        readableDatabase.use { db ->
+        readableDatabase.let { db ->
             for (chunk in unique.chunked(400)) {
                 val placeholders = chunk.joinToString(",") { "?" }
                 val args = arrayOf(langMode, *chunk.toTypedArray())
@@ -83,7 +83,7 @@ class PersonalHistoryDatabase(context: Context) : SQLiteOpenHelper(
     fun queryEnglishPrefix(prefix: String, limit: Int = 12): List<HistoryEntry> {
         val key = prefix.trim().lowercase()
         if (key.isEmpty()) return emptyList()
-        return readableDatabase.use { db ->
+        return readableDatabase.let { db ->
             db.rawQuery(
                 """
                 SELECT word, count FROM personal_history
@@ -171,7 +171,7 @@ class PersonalHistoryDatabase(context: Context) : SQLiteOpenHelper(
 
     private fun seedCount(word: String, langMode: String, count: Int) {
         if (count <= 0) return
-        writableDatabase.use { db ->
+        writableDatabase.let { db ->
             db.execSQL(
                 """
                 INSERT INTO personal_history (word, lang_mode, count)
