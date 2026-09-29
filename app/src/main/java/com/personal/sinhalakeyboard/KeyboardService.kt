@@ -101,7 +101,6 @@ class KeyboardService : InputMethodService() {
     private var keyMutedColor = 0xFF616161.toInt()
     private var sinhalaSuggestionColor = 0xFF1B5E20.toInt()
     private var romanSuggestionColor = 0xFF616161.toInt()
-    private var suggestionChipBg = R.drawable.suggestion_chip_light
 
     private val sinhalaSuggestRunnable = Runnable { updateSinhalaSuggestions() }
     private val englishSuggestRunnable = Runnable { updateEnglishSuggestions() }
@@ -248,7 +247,6 @@ class KeyboardService : InputMethodService() {
                 keyMutedColor = 0xFF616161.toInt()
                 btnMicBg = R.drawable.toolbar_btn_mic
                 btnFixBg = R.drawable.toolbar_btn_fix
-                suggestionChipBg = R.drawable.suggestion_chip_light
                 sinhalaSuggestionColor = 0xFF1B5E20.toInt()
                 romanSuggestionColor = 0xFF616161.toInt()
             }
@@ -259,7 +257,6 @@ class KeyboardService : InputMethodService() {
                 keyMutedColor = 0xFFB0BEC5.toInt()
                 btnMicBg = R.drawable.toolbar_btn_mic
                 btnFixBg = R.drawable.toolbar_btn_fix
-                suggestionChipBg = R.drawable.suggestion_chip_dark
                 sinhalaSuggestionColor = 0xFF81C784.toInt()
                 romanSuggestionColor = 0xFFB0BEC5.toInt()
             }
@@ -1554,12 +1551,13 @@ class KeyboardService : InputMethodService() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
                 letterSpacing = 0.05f
             }
-            setPadding(20, 8, 20, 8)
-            setBackgroundResource(suggestionChipBg)
+            val horizontalPadding = (16 * resources.displayMetrics.density).toInt()
+            setPadding(horizontalPadding, 8, horizontalPadding, 8)
+            background = null
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT,
-            ).apply { marginEnd = 6 }
+            )
         }
 
     private fun bindSuggestionChip(
@@ -1568,7 +1566,7 @@ class KeyboardService : InputMethodService() {
         onPick: (SuggestionCandidate) -> Unit,
     ) {
         chip.text = candidate.display
-        chip.setBackgroundResource(suggestionChipBg)
+        chip.background = null
         chip.setTextColor(
             when {
                 candidate.isPersonal -> if (activeTheme == KeyboardTheme.BLACK) {
