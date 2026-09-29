@@ -65,7 +65,7 @@ class SinhalaFrequencyDatabase(context: Context) {
         ) {
 
             override fun removeEldestEntry(
-                eldest: MutableMap.MutableEntry<String, List<Entry>>?,
+                eldest: MutableMap.MutableEntry<String, List<SinhalaFrequencyDatabase.Entry>>?,
             ): Boolean {
                 return size > PREFIX_CACHE_SIZE
             }
@@ -462,6 +462,18 @@ class SinhalaFrequencyDatabase(context: Context) {
 
     fun isReady(): Boolean {
         return db != null
+    }
+
+    @Synchronized
+    fun pronunciationEntries(): List<SinhalaPhoneticIndex.Entry> {
+        val database = db ?: return emptyList()
+        return database.rawQuery("SELECT word, freq FROM words", null).use { cursor ->
+            val entries = ArrayList<SinhalaPhoneticIndex.Entry>(cursor.count)
+            while (cursor.moveToNext()) {
+                entries.add(SinhalaPhoneticIndex.Entry(cursor.getString(0), cursor.getInt(1)))
+            }
+            entries
+        }
     }
 
     fun wordCount(): Int? {

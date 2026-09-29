@@ -44,6 +44,10 @@ class SinglishEngine(
     private val corpusDb =
         SinhalaFrequencyDatabase(context)
 
+    private val pronunciationIndex by lazy {
+        SinhalaPhoneticIndex(corpusDb.pronunciationEntries())
+    }
+
     init {
         loadDictionary(context)
 
@@ -145,6 +149,34 @@ class SinglishEngine(
             limit <= 0
         ) {
             return emptyList()
+        }
+
+        // Query the whole corpus by pronunciation before literal spelling expansion.
+        // This method is called on Dispatchers.Default; cloud suggestions remain separate.
+        val phoneticMatches = pronunciationIndex.query(typed).toMutableList()
+        // Keep valid spelling alternatives for names/inflections absent from the corpus.
+        // They rank below attested complete words, rather than replacing those words.
+        val pronunciation = SinhalaPronunciation.roman(typed)
+        val fallbackSpellings = (listOf(typed) + SinglishAmbiguityVariants.liveVariants(typed).take(32))
+            .flatMap { AlternateSinhalaReadings.forRoman(it) }
+        for (word in fallbackSpellings) {
+            if (pronunciation.isNotEmpty() && SinhalaPronunciation.sinhala(word) == pronunciation &&
+                phoneticMatches.none { it.word == word }) {
+                phoneticMatches.add(SinhalaPhoneticIndex.Match(word, 0, true))
+            }
+        }
+        typingMemory?.exactSinhalaEntry(typed)?.value?.let { learned ->
+            if (isValidSinhalaWord(learned) && phoneticMatches.none { it.word == learned }) {
+                phoneticMatches.add(SinhalaPhoneticIndex.Match(learned, 0, true))
+            }
+        }
+        if (phoneticMatches.isNotEmpty()) {
+            val counts = personalHistory?.getCounts(
+                phoneticMatches.map { it.word }, PersonalHistoryDatabase.MODE_SINHALA,
+            ).orEmpty()
+            return SinhalaPhoneticIndex.rank(phoneticMatches, counts, limit).map { word ->
+                SuggestionCandidate(display = word, commitText = word, isPersonal = (counts[word] ?: 0) > 0)
+            }
         }
 
         val lower =
